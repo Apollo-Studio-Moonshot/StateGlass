@@ -81,6 +81,7 @@ select {
 
 button {
   cursor: pointer;
+  border-radius: var(--radius-xs);
 }
 
 a {
@@ -458,7 +459,7 @@ code,
   gap: 8px;
   height: 36px;
   padding: 0 16px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   border: 1px solid transparent;
   font-size: 13px;
   font-weight: 500;
@@ -514,7 +515,7 @@ code,
   height: 44px;
   padding: 0 20px;
   font-size: 14px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xs);
 }
 
 .icon-button {
@@ -523,7 +524,7 @@ code,
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
@@ -649,7 +650,7 @@ code,
   margin-bottom: 14px;
   background: var(--bg-deep);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 .toggle-row:hover {
   border-color: var(--border-strong);
@@ -958,7 +959,7 @@ code,
   height: 38px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--panel);
   color: var(--text);
   text-align: left;
@@ -996,7 +997,7 @@ code,
   width: 100%;
   padding: 10px 12px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   text-align: left;
   color: var(--text-soft);
@@ -1552,7 +1553,7 @@ code,
   gap: 10px;
   padding: 9px 12px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--panel);
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -2192,7 +2193,7 @@ code,
   gap: 3px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--panel);
   text-align: left;
 }
@@ -2748,7 +2749,7 @@ code,
   height: 32px;
   padding: 0 12px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-faint);
   font-size: 12.5px;
@@ -3661,7 +3662,7 @@ code,
   width: 100%;
   padding: 11px 12px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   text-align: left;
 }
