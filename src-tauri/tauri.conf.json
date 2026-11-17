@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Stateglass",
+  "version": "0.1.0",
+  "identifier": "dev.stateglass.app",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Stateglass",
+        "width": 1500,
+        "height": 940,
+        "minWidth": 980,
+        "minHeight": 620,
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundColor": "#0a0c10"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost blob: data:; worker-src 'self' blob:; child-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../python/stateglass_tracer.py": "python/stateglass_tracer.py"
+    },
+    "category": "DeveloperTool",
+    "shortDescription": "Visual debugging IDE",
+    "longDescription": "Stateglass traces how values are produced and lets you run isolated experiments against a recorded baseline."
+  }
+}

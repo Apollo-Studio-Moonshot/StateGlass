@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# build output
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# local data
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+.stateglass/
+.DS_Store
+*.log

@@ -1,0 +1,41 @@
+{
+  "name": "stateglass",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A visual debugging IDE: trace where values come from and experiment safely.",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:web": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:web": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:python": "python3 -m unittest discover -s python/tests -v"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "4.7.0",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-dialog": "2.8.4",
+    "@xyflow/react": "12.12.1",
+    "monaco-editor": "0.52.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-resizable-panels": "4.21.0",
+    "zustand": "5.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "@types/node": "26.6.6",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.8",
+    "vitest": "5.1.0"
+  }
+}
