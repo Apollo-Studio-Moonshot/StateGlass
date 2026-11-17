@@ -44,14 +44,14 @@ The original project folder is never modified when creating or running experimen
 | Area | What works today |
 | --- | --- |
 | Projects | Open any local folder, file tree with ignore rules, safe path resolution, entry-point detection, persisted run settings, filesystem watching, recent projects |
-| Editor | Monaco with Python highlighting, multiple tabs, dirty tracking, `⌘S`, jump-to-line from traces, entry-point badge |
+| Editor | Native SwiftUI text editor, multiple tabs, dirty tracking, `⌘S`, and source navigation from trace events |
 | Execution | Python child process, stdout/stderr streamed live, exit codes, timeout with process-group termination, cancellation, peak memory, duration |
 | Tracing | `sys.settrace` helper, NDJSON events, variable history, call/return/exception events, per-line attribution, configurable limits, truncation signalling |
 | Inspection | Variables at any point in the timeline, history for a selected variable, function/line navigation, interactive timeline with filters and scrubbing |
-| Data flow | AST assignment metadata joined with runtime snapshots, React Flow graph, assignment site table, source navigation |
+| Data flow | AST assignment metadata joined with runtime snapshots, lineage view, assignment site table, source navigation |
 | Experiments | Isolated project copies, multiple experiments per baseline, replay of recorded entry point/args/stdin/timeout, edit the copy without touching the original |
 | Comparison | Side-by-side metrics, unified output/error diffs, variable diff table, explicit nondeterminism warnings |
-| UX | Dark theme, resizable panels (persisted), keyboard shortcuts, loading/empty states, live status, graceful errors |
+| UX | Dark theme, native resizable panes, keyboard shortcuts, loading/empty states, live status, graceful errors |
 
 ---
 
@@ -59,36 +59,28 @@ The original project folder is never modified when creating or running experimen
 
 ### Requirements
 
-- macOS, Linux, or Windows with [Tauri 2 prerequisites](https://tauri.app/start/prerequisites/)
-  (Rust 1.77+, platform webview build dependencies, Node 20+)
+- macOS 14 or newer, Xcode with Swift 6, and Rust 1.77+
 - Python **3.11 or newer** on `PATH` (a project `.venv` is detected automatically)
-- No cloud account, API key, telemetry, or network service is required
+- No Node.js, cloud account, API key, telemetry, or network service is required
 
 ### Install and run
 
 ```bash
-npm install
-npm run dev          # starts the Vite frontend + Tauri desktop shell
+npm run dev          # builds the Rust sidecar and launches the native SwiftUI app
 ```
 
-Build a standalone app:
+Build a standalone `.app` bundle:
 
 ```bash
-npm run tauri:build  # production bundle for the current OS
+npm run build
+open build/Stateglass.app
 ```
 
-Open a project directly from a terminal:
+Set `STATEGLASS_APP_OUTPUT` to place the app bundle elsewhere. To open it as
+part of the build command, use `bash scripts/build-macos.sh --open`.
 
-```bash
-# built binary (debug or bundled app)
-./src-tauri/target/debug/stateglass /path/to/python/project
-
-# in development, pass app arguments after a second `--`
-npm run tauri -- dev -- -- /path/to/python/project
-```
-
-The bundled sample lives at [`samples/python-demo`](samples/python-demo). Use
-**Try the sample project** on the welcome screen to copy it into the app data
+The bundled sample lives at [`samples/python-demo`](samples/python-demo). Choose
+**Load Sample Project** on the welcome screen to copy it into the app data
 directory and open it.
 
 ---
@@ -97,7 +89,7 @@ directory and open it.
 
 The sample is a four-file pricing pipeline with one intentional bug.
 
-1. **Open the sample** and press `⌘↵` (`Ctrl+Enter` on Windows/Linux). The first
+1. **Open the sample** and press `⌘↵`. The first
    run asks for consent, then starts a traced baseline execution.
 2. Watch stdout stream in the console; the timeline fills with variable, call and
    exception events.
@@ -122,18 +114,18 @@ Keyboard shortcuts are available from the keyboard icon in the header.
 
 ## Architecture
 
-Stateglass is a Tauri 2 application. Rust owns all application logic and state;
-React only renders and forwards user intent. Python introspection lives in a
-separate helper process.
+Stateglass is a native macOS app built with SwiftUI and Swift 6. The UI starts a
+bundled Rust sidecar and exchanges newline-delimited JSON requests and events
+over standard input/output. Rust owns application logic and persistence; Python
+introspection runs in a separate helper process.
 
 ```mermaid
 flowchart LR
-    subgraph Desktop["Tauri desktop app"]
-        UI["React + TypeScript<br/>Monaco · React Flow"]
-        IPC["Tauri commands<br/>(request / response)"]
-        EV["Tauri events<br/>(streaming)"]
-        subgraph Rust["Rust backend"]
-            CMD[commands]
+    subgraph Desktop["macOS app"]
+        UI["SwiftUI + Swift 6"]
+        IPC["JSON-lines sidecar protocol"]
+        subgraph Rust["Rust sidecar"]
+            CMD[command services]
             PM[project manager]
             EX[execution engine]
             TR[tracing engine]
@@ -147,7 +139,7 @@ flowchart LR
         P["user program"]
     end
 
-    UI -->|invoke| IPC --> CMD
+    UI -->|request / response| IPC --> CMD
     CMD --> PM
     CMD --> EX
     CMD --> TR
@@ -157,7 +149,7 @@ flowchart LR
     XP --> ST
     EX -->|spawn, stdin, timeout, kill| T
     T -->|trace NDJSON file| EX
-    EX -->|stdout/stderr chunks + trace batches| EV --> UI
+    EX -->|stdout/stderr chunks, trace batches, status| IPC --> UI
     T -->|imports| P
     T -->|AST metadata JSON| XP
 ```
@@ -173,29 +165,29 @@ flowchart LR
 | `src-tauri/src/storage.rs` | SQLite schema, migrations and all persistence queries |
 | `src-tauri/src/python.rs` | Interpreter discovery/validation, tracer location, AST analysis orchestration |
 | `src-tauri/src/watchers.rs` | Debounced filesystem notifications for open workspaces |
-| `src-tauri/src/commands.rs` | Thin Tauri IPC layer; validates inputs and delegates |
-| `src-tauri/src/models.rs` | Serializable DTOs (serde `camelCase`) shared with the UI |
+| `src-tauri/src/commands.rs` | Validates and delegates backend commands; exposes reusable service functions |
+| `src-tauri/src/sidecar.rs` | JSON-lines method dispatch for the Swift app |
+| `src-tauri/src/bin/stateglass-sidecar.rs` | Sidecar process, request responses, and streamed event transport |
+| `src-tauri/src/models.rs` | Serializable DTOs (serde `camelCase`) shared across process boundary |
 
-### Frontend modules
+### Native app modules
 
 | Path | Responsibility |
 | --- | --- |
-| `src/store.ts` | Zustand store: workspace, sessions, trace selection, files, UI state, run orchestration |
-| `src/api.ts` | Typed `invoke` wrappers and event subscriptions |
-| `src/lib/format.ts`, `src/lib/tree.ts` | Formatting, argument parsing, file tree building/filtering (unit tested) |
-| `src/components/Header.tsx` | Project/workspace identity, run cluster, session selection, run settings |
-| `src/components/EditorPane.tsx` | Monaco, tabs, trace-line reveal decorations |
-| `src/components/Timeline.tsx` | Filterable event timeline, density strip, scrubbing, source jump |
-| `src/components/VariableInspector.tsx` | Snapshot table plus per-variable history |
-| `src/components/DataFlowPanel.tsx` | React Flow graph and assignment-site table |
-| `src/components/ExperimentsPanel.tsx` | Experiment list, run/compare actions |
-| `src/components/ComparePanel.tsx` | Metrics, warnings, diffs, variable comparison |
-| `src/components/ConsolePanel.tsx` | Live/settled stdout and stderr |
-| `src/components/Dialogs.tsx` | Consent, new experiment, shortcuts |
+| `xcode/Sources/StateGlass/StateGlassApp.swift` | Native app lifecycle and menu keyboard shortcuts |
+| `xcode/Sources/StateGlass/ContentView.swift` | SwiftUI project workspace, editor, trace inspector, flow, experiment, compare, and console panels |
+| `xcode/Sources/StateGlass/AppModel.swift` | Main-actor application state and backend workflows |
+| `xcode/Sources/StateGlass/SidecarClient.swift` | Typed asynchronous JSON-lines transport, process lifecycle, and event stream |
+| `xcode/Sources/StateGlass/Models.swift` | Swift DTOs corresponding to Rust serde models |
 
 ### IPC surface
 
-Commands are request/response; long-running work reports through events.
+The Swift client sends one JSON object per line with `protocolVersion` (currently
+`1`), `id`, `method`, and `params`. Responses echo the protocol version and
+request ID and contain either `result` or a typed `error`. Unsolicited event
+messages use the same versioned stream and carry `event` and `payload` fields.
+Long-running executions return immediately and stream output,
+trace batches, metrics, completion, and workspace changes.
 
 **Commands:** `bootstrap`, `list_projects`, `open_project`, `create_sample_project`,
 `get_project`, `update_project_config`, `set_project_consent`, `list_files`,
@@ -363,11 +355,7 @@ can change results. The UI says so in every comparison.
 
 SQLite database: `<app-data>/stateglass.sqlite3`.
 
-| Platform | App data directory |
-| --- | --- |
-| macOS | `~/Library/Application Support/dev.stateglass.app/` |
-| Linux | `~/.local/share/dev.stateglass.app/` |
-| Windows | `%APPDATA%\dev.stateglass.app\` |
+The macOS app data directory is `~/Library/Application Support/dev.stateglass.app/`.
 
 Tables: `projects`, `sessions`, `trace_events`, `assignments`, `experiments`,
 `settings`. Trace files are kept as NDJSON under `<app-data>/traces/`; experiment
@@ -402,21 +390,15 @@ session. The database keeps run history across restarts.
 ## Testing
 
 ```bash
-# Rust unit + integration tests (spawns real Python helper processes)
-cd src-tauri && cargo test
-
-# Frontend logic tests (formatting, argument parsing, file tree)
 npm test
-
-# Python tracer and analyzer tests
-python3 -m unittest discover -s python/tests -v
-
-# Type checking and production frontend build
-npx tsc --noEmit && npm run build
 ```
 
 Coverage highlights:
 
+- Rust unit + integration tests (spawns real Python helper processes), including
+  sidecar command dispatch and protocol errors;
+- Swift 6 native app compilation;
+- Python tracer and analyzer tests;
 - storage CRUD, trace queries, variable snapshots, history ordering;
 - path traversal and binary-file rejection;
 - project copy isolation (original file unchanged after editing the copy);
@@ -428,7 +410,7 @@ Coverage highlights:
 - Python summarization safety, line attribution, event limits, error reporting,
   AST dependencies, stdlib frame exclusion;
 - NDJSON framing across partial chunks;
-- frontend formatting and tree/filter behavior.
+- JSON request/response transport and streamed output, trace, and watcher events.
 
 Integration tests skip nothing — they require Python 3.11+ to be installed.
 
@@ -439,26 +421,21 @@ Integration tests skip nothing — they require Python 3.11+ to be installed.
 ```
 .
 ├── README.md
-├── package.json
-├── vite.config.ts
-├── src/                       React + TypeScript UI
-│   ├── components/            Panels, dialogs, timeline, graphs
-│   ├── lib/                   Pure helpers (unit tested)
-│   ├── api.ts                 Typed Tauri IPC bindings
-│   ├── store.ts               Application state
-│   ├── monaco.ts              Editor bootstrap + theme
-│   ├── styles.css             Dark design system
-│   └── types.ts               DTOs mirroring Rust models
+├── package.json               Native dev/build/test entry points
+├── xcode/
+│   ├── Package.swift          Swift 6 macOS executable package
+│   └── Sources/StateGlass/    SwiftUI app, state, models, and sidecar client
+├── scripts/                   Native development, build, and test scripts
 ├── src-tauri/
-│   ├── src/                   Rust backend modules (see table above)
+│   ├── src/                   Rust backend, sidecar protocol, and adapters
 │   ├── tests/                 End-to-end execution/experiment tests
 │   ├── examples/seed_demo.rs  Developer data seeding utility
-│   ├── capabilities/          Tauri permissions (core + dialog)
-│   └── tauri.conf.json        App config and bundled tracer resource
+│   └── Cargo.toml             Rust backend and sidecar targets
 ├── python/
 │   ├── stateglass_tracer.py   Runtime instrumentation + AST analyzer
 │   └── tests/                 unittest suite
 ├── samples/python-demo/       Buggy pricing pipeline used in demos/tests
+├── src/                       Retained legacy web UI sources
 └── scripts/gen_icons.py       Dependency-free icon generator
 ```
 
@@ -478,7 +455,8 @@ Only Python is implemented. The boundaries that keep this maintainable:
 
 A future language adapter would add: entry-point detection, interpreter discovery,
 a tracer/analyzer helper implementing the event and analysis schemas, and a language
-mode in the editor. No frontend rewrite is required.
+mode in the native editor. The existing timeline and comparison models consume the
+language-neutral event and assignment schemas.
 
 ---
 
@@ -505,8 +483,8 @@ Install Python 3.11+, add it to `PATH`, or set an interpreter per project in Run
 settings. Project `.venv/bin/python` (and `Scripts/python.exe`) are detected.
 
 **“The Python instrumentation helper is missing.”**
-In development the helper is resolved from `python/stateglass_tracer.py`; in a
-bundle it is included as a Tauri resource. Reinstall or set `STATEGLASS_TRACER` to
+In development the helper is resolved from `python/stateglass_tracer.py`; in the
+app bundle it is included under `Contents/Resources/python`. Reinstall or set `STATEGLASS_TRACER` to
 an absolute path.
 
 **A run times out.**
@@ -521,9 +499,8 @@ code or dynamic constructs may not produce AST metadata; the graph note will say
 Per-stream output is capped at 3 MB and traces at 200k events. This is deliberate
 to keep the app responsive.
 
-**Linux build fails.**
-Install the Tauri prerequisites (`webkit2gtk-4.1`, `libappindicator`, build tools)
-for your distribution.
+**The Swift app does not build.**
+Use macOS 14 or newer and Xcode with Swift 6, then run `swift build --package-path xcode`.
 
 ---
 

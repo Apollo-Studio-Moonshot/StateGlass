@@ -15,7 +15,7 @@ use crate::tracing as trace_engine;
 use crate::tracing::{TRACE_MAX_DEPTH, TRACE_MAX_EVENTS, TRACE_MAX_LOCALS, TRACE_VALUE_LENGTH};
 use crate::{experiments, project, AppState};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, State};
+use tauri::State;
 
 fn tracer_for(state: &AppState) -> AppResult<PathBuf> {
     state
@@ -88,20 +88,15 @@ fn run_analysis(
     python::analyze_workspace(&python_path, &tracer, root, workspace_id, &state.storage)
 }
 
-fn open_project_impl(app: &AppHandle, state: &AppState, path: &Path) -> AppResult<Project> {
+fn open_project_impl(state: &AppState, path: &Path) -> AppResult<Project> {
     let project = project::open_project(&state.storage, path)?;
     if let Err(error) = state
         .watchers
-        .watch(&project.id, Path::new(&project.root_path), app.clone())
+        .watch(&project.id, Path::new(&project.root_path))
     {
         tracing::warn!(%error, "Could not watch project files");
     }
-    if let Err(error) = run_analysis(
-        state,
-        &project,
-        Path::new(&project.root_path),
-        &project.id,
-    ) {
+    if let Err(error) = run_analysis(state, &project, Path::new(&project.root_path), &project.id) {
         tracing::warn!(%error, "Initial static analysis failed");
     }
     Ok(project)
@@ -111,11 +106,13 @@ fn open_project_impl(app: &AppHandle, state: &AppState, path: &Path) -> AppResul
 // Bootstrap & environment
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub fn bootstrap(state: State<'_, AppState>) -> AppResult<Bootstrap> {
+pub fn bootstrap_core(state: &AppState) -> AppResult<Bootstrap> {
     let selected_python = global_python_override(&state.storage)?;
     let tracer_path = state.tracer_path.clone();
-    let tracer_available = tracer_path.as_ref().map(|path| path.is_file()).unwrap_or(false);
+    let tracer_available = tracer_path
+        .as_ref()
+        .map(|path| path.is_file())
+        .unwrap_or(false);
     Ok(Bootstrap {
         version: env!("CARGO_PKG_VERSION").to_string(),
         data_dir: state.data_dir.to_string_lossy().to_string(),
@@ -136,9 +133,8 @@ pub fn bootstrap(state: State<'_, AppState>) -> AppResult<Bootstrap> {
     })
 }
 
-#[tauri::command]
-pub fn list_python_runtimes(
-    state: State<'_, AppState>,
+pub fn list_python_runtimes_core(
+    state: &AppState,
     project_id: Option<String>,
 ) -> AppResult<Vec<PythonRuntime>> {
     let root = match project_id {
@@ -150,8 +146,7 @@ pub fn list_python_runtimes(
     Ok(python::detect_runtimes(root.as_deref()))
 }
 
-#[tauri::command]
-pub fn set_global_python_path(state: State<'_, AppState>, path: Option<String>) -> AppResult<()> {
+pub fn set_global_python_path_core(state: &AppState, path: Option<String>) -> AppResult<()> {
     match path.filter(|value| !value.trim().is_empty()) {
         Some(path) => state.storage.set_setting("python_path", path.trim())?,
         None => state.storage.set_setting("python_path", "")?,
@@ -163,62 +158,50 @@ pub fn set_global_python_path(state: State<'_, AppState>, path: Option<String>) 
 // Projects & files
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
+pub fn list_projects_core(state: &AppState) -> AppResult<Vec<Project>> {
     state.storage.list_projects(30)
 }
 
-#[tauri::command]
-pub fn open_project(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    path: String,
-) -> AppResult<Project> {
-    open_project_impl(&app, &state, Path::new(&path))
+pub fn open_project_core(state: &AppState, path: String) -> AppResult<Project> {
+    open_project_impl(&state, Path::new(&path))
 }
 
-#[tauri::command]
-pub fn create_sample_project(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> AppResult<Project> {
+pub fn create_sample_project_core(state: &AppState) -> AppResult<Project> {
     let directory = state.data_dir.join("samples").join("python-demo");
     project::create_sample_project(&directory)?;
-    open_project_impl(&app, &state, &directory)
+    open_project_impl(&state, &directory)
 }
 
-#[tauri::command]
-pub fn get_project(state: State<'_, AppState>, project_id: String) -> AppResult<Project> {
+pub fn get_project_core(state: &AppState, project_id: String) -> AppResult<Project> {
     state.storage.get_project(&project_id)
 }
 
-#[tauri::command]
-pub fn update_project_config(
-    state: State<'_, AppState>,
+pub fn update_project_config_core(
+    state: &AppState,
     project_id: String,
     config: ProjectConfigInput,
 ) -> AppResult<Project> {
-    if let Some(entry) = config.entry_point.as_deref().filter(|value| !value.is_empty()) {
+    if let Some(entry) = config
+        .entry_point
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
         let project = state.storage.get_project(&project_id)?;
         project::resolve_inside(Path::new(&project.root_path), entry)?;
     }
-    state
-        .storage
-        .update_project_config(&project_id, &config)
+    state.storage.update_project_config(&project_id, &config)
 }
 
-#[tauri::command]
-pub fn set_project_consent(
-    state: State<'_, AppState>,
+pub fn set_project_consent_core(
+    state: &AppState,
     project_id: String,
     granted: bool,
 ) -> AppResult<Project> {
     state.storage.set_consent(&project_id, granted)
 }
 
-#[tauri::command]
-pub fn list_files(
-    state: State<'_, AppState>,
+pub fn list_files_core(
+    state: &AppState,
     project_id: String,
     experiment_id: Option<String>,
 ) -> AppResult<Vec<FileEntry>> {
@@ -227,9 +210,8 @@ pub fn list_files(
     project::list_files(&root)
 }
 
-#[tauri::command]
-pub fn read_file(
-    state: State<'_, AppState>,
+pub fn read_file_core(
+    state: &AppState,
     project_id: String,
     experiment_id: Option<String>,
     path: String,
@@ -239,9 +221,8 @@ pub fn read_file(
     project::read_text(&root, &path)
 }
 
-#[tauri::command]
-pub fn write_file(
-    state: State<'_, AppState>,
+pub fn write_file_core(
+    state: &AppState,
     project_id: String,
     experiment_id: Option<String>,
     path: String,
@@ -252,9 +233,8 @@ pub fn write_file(
     project::write_text(&root, &path, &content)
 }
 
-#[tauri::command]
-pub fn analyze_workspace(
-    state: State<'_, AppState>,
+pub fn analyze_workspace_core(
+    state: &AppState,
     project_id: String,
     experiment_id: Option<String>,
 ) -> AppResult<AnalysisSummary> {
@@ -267,8 +247,7 @@ pub fn analyze_workspace(
 // Execution
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub fn start_run(state: State<'_, AppState>, request: RunRequest) -> AppResult<Session> {
+pub fn start_run_core(state: &AppState, request: RunRequest) -> AppResult<Session> {
     let project = state.storage.get_project(&request.project_id)?;
     if !project.consent_granted {
         return Err(AppError::ConsentRequired(
@@ -321,9 +300,7 @@ pub fn start_run(state: State<'_, AppState>, request: RunRequest) -> AppResult<S
                 .entry_file
                 .clone()
                 .or_else(|| project.entry_point.clone())
-                .ok_or_else(|| {
-                    AppError::validation("The baseline has no recorded entry point")
-                })?;
+                .ok_or_else(|| AppError::validation("The baseline has no recorded entry point"))?;
             let python = if Path::new(&baseline.python).is_file() {
                 baseline.python.clone()
             } else {
@@ -386,14 +363,12 @@ pub fn start_run(state: State<'_, AppState>, request: RunRequest) -> AppResult<S
     state.executions.start(spec)
 }
 
-#[tauri::command]
-pub fn cancel_run(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+pub fn cancel_run_core(state: &AppState, session_id: String) -> AppResult<()> {
     state.executions.cancel(&session_id)
 }
 
-#[tauri::command]
-pub fn list_sessions(
-    state: State<'_, AppState>,
+pub fn list_sessions_core(
+    state: &AppState,
     project_id: String,
     limit: Option<u32>,
 ) -> AppResult<Vec<Session>> {
@@ -402,16 +377,11 @@ pub fn list_sessions(
         .list_sessions(&project_id, limit.unwrap_or(80).clamp(1, 500))
 }
 
-#[tauri::command]
-pub fn get_session(state: State<'_, AppState>, session_id: String) -> AppResult<Session> {
+pub fn get_session_core(state: &AppState, session_id: String) -> AppResult<Session> {
     state.storage.get_session(&session_id)
 }
 
-#[tauri::command]
-pub fn get_session_output(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> AppResult<SessionOutput> {
+pub fn get_session_output_core(state: &AppState, session_id: String) -> AppResult<SessionOutput> {
     state.storage.session_output(&session_id)
 }
 
@@ -419,9 +389,8 @@ pub fn get_session_output(
 // Tracing
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub fn list_trace_events(
-    state: State<'_, AppState>,
+pub fn list_trace_events_core(
+    state: &AppState,
     session_id: String,
     kinds: Option<Vec<String>>,
     limit: Option<u32>,
@@ -437,23 +406,20 @@ pub fn list_trace_events(
     )
 }
 
-#[tauri::command]
-pub fn trace_stats(state: State<'_, AppState>, session_id: String) -> AppResult<TraceStats> {
+pub fn trace_stats_core(state: &AppState, session_id: String) -> AppResult<TraceStats> {
     state.storage.trace_stats(&session_id)
 }
 
-#[tauri::command]
-pub fn variables_at(
-    state: State<'_, AppState>,
+pub fn variables_at_core(
+    state: &AppState,
     session_id: String,
     seq: Option<i64>,
 ) -> AppResult<Vec<VariableSnapshot>> {
     state.storage.variables_at(&session_id, seq)
 }
 
-#[tauri::command]
-pub fn variable_history(
-    state: State<'_, AppState>,
+pub fn variable_history_core(
+    state: &AppState,
     session_id: String,
     name: String,
     limit: Option<u32>,
@@ -463,9 +429,8 @@ pub fn variable_history(
         .variable_history(&session_id, &name, limit.unwrap_or(300).clamp(1, 2000))
 }
 
-#[tauri::command]
-pub fn data_flow(
-    state: State<'_, AppState>,
+pub fn data_flow_core(
+    state: &AppState,
     session_id: String,
     variable: String,
 ) -> AppResult<DataFlow> {
@@ -477,10 +442,8 @@ pub fn data_flow(
 // Experiments & comparison
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub fn create_experiment(
-    app: AppHandle,
-    state: State<'_, AppState>,
+pub fn create_experiment_core(
+    state: &AppState,
     project_id: String,
     baseline_session_id: String,
     name: String,
@@ -500,27 +463,21 @@ pub fn create_experiment(
         &python_path,
         &tracer,
     )?;
-    if let Err(error) = state.watchers.watch(
-        &experiment.id,
-        Path::new(&experiment.path),
-        app.clone(),
-    ) {
+    if let Err(error) = state
+        .watchers
+        .watch(&experiment.id, Path::new(&experiment.path))
+    {
         tracing::warn!(%error, "Could not watch experiment files");
     }
     Ok(experiment)
 }
 
-#[tauri::command]
-pub fn list_experiments(
-    state: State<'_, AppState>,
-    project_id: String,
-) -> AppResult<Vec<Experiment>> {
+pub fn list_experiments_core(state: &AppState, project_id: String) -> AppResult<Vec<Experiment>> {
     state.storage.list_experiments(&project_id)
 }
 
-#[tauri::command]
-pub fn compare_sessions(
-    state: State<'_, AppState>,
+pub fn compare_sessions_core(
+    state: &AppState,
     baseline_session_id: String,
     experiment_session_id: String,
 ) -> AppResult<SessionComparison> {
@@ -533,3 +490,62 @@ pub fn compare_sessions(
     let experiment = state.storage.get_session(&experiment_session_id)?;
     experiments::compare_sessions(&state.storage, &baseline, &experiment)
 }
+
+macro_rules! tauri_command {
+    ($name:ident -> $result:ty => $core:ident) => {
+        #[tauri::command]
+        pub fn $name(state: State<'_, AppState>) -> AppResult<$result> {
+            $core(&state)
+        }
+    };
+    ($name:ident($($arg:ident: $arg_type:ty),+) -> $result:ty => $core:ident) => {
+        #[tauri::command]
+        pub fn $name(
+            state: State<'_, AppState>,
+            $($arg: $arg_type),+
+        ) -> AppResult<$result> {
+            $core(&state, $($arg),+)
+        }
+    };
+}
+
+tauri_command!(bootstrap -> Bootstrap => bootstrap_core);
+tauri_command!(list_python_runtimes(project_id: Option<String>) -> Vec<PythonRuntime> => list_python_runtimes_core);
+tauri_command!(set_global_python_path(path: Option<String>) -> () => set_global_python_path_core);
+tauri_command!(list_projects -> Vec<Project> => list_projects_core);
+tauri_command!(open_project(path: String) -> Project => open_project_core);
+tauri_command!(create_sample_project -> Project => create_sample_project_core);
+tauri_command!(get_project(project_id: String) -> Project => get_project_core);
+tauri_command!(update_project_config(project_id: String, config: ProjectConfigInput) -> Project => update_project_config_core);
+tauri_command!(set_project_consent(project_id: String, granted: bool) -> Project => set_project_consent_core);
+tauri_command!(list_files(project_id: String, experiment_id: Option<String>) -> Vec<FileEntry> => list_files_core);
+tauri_command!(read_file(project_id: String, experiment_id: Option<String>, path: String) -> FileContent => read_file_core);
+tauri_command!(write_file(project_id: String, experiment_id: Option<String>, path: String, content: String) -> FileContent => write_file_core);
+tauri_command!(analyze_workspace(project_id: String, experiment_id: Option<String>) -> AnalysisSummary => analyze_workspace_core);
+tauri_command!(start_run(request: RunRequest) -> Session => start_run_core);
+tauri_command!(cancel_run(session_id: String) -> () => cancel_run_core);
+tauri_command!(list_sessions(project_id: String, limit: Option<u32>) -> Vec<Session> => list_sessions_core);
+tauri_command!(get_session(session_id: String) -> Session => get_session_core);
+tauri_command!(get_session_output(session_id: String) -> SessionOutput => get_session_output_core);
+tauri_command!(list_trace_events(
+    session_id: String,
+    kinds: Option<Vec<String>>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+    tail: Option<bool>
+) -> TracePage => list_trace_events_core);
+tauri_command!(trace_stats(session_id: String) -> TraceStats => trace_stats_core);
+tauri_command!(variables_at(session_id: String, seq: Option<i64>) -> Vec<VariableSnapshot> => variables_at_core);
+tauri_command!(variable_history(session_id: String, name: String, limit: Option<u32>) -> Vec<TraceEvent> => variable_history_core);
+tauri_command!(data_flow(session_id: String, variable: String) -> DataFlow => data_flow_core);
+tauri_command!(create_experiment(
+    project_id: String,
+    baseline_session_id: String,
+    name: String,
+    note: Option<String>
+) -> Experiment => create_experiment_core);
+tauri_command!(list_experiments(project_id: String) -> Vec<Experiment> => list_experiments_core);
+tauri_command!(compare_sessions(
+    baseline_session_id: String,
+    experiment_session_id: String
+) -> SessionComparison => compare_sessions_core);

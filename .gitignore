@@ -5,6 +5,8 @@ node_modules/
 
 # build output
 dist/
+build/
+xcode/.build/
 src-tauri/target/
 src-tauri/gen/schemas/
 
