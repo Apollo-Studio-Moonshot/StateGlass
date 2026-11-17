@@ -51,6 +51,7 @@ The original project folder is never modified when creating or running experimen
 | Data flow | AST assignment metadata joined with runtime snapshots, Metal-backed graph rendering, assignment site table, source navigation |
 | Experiments | Isolated project copies, multiple experiments per baseline, replay of recorded entry point/args/stdin/timeout, edit the copy without touching the original |
 | Comparison | Side-by-side metrics, unified output/error diffs, variable diff table, explicit nondeterminism warnings |
+| SoloVibe canvas | Local-first context nodes for frontend, billing, marketing, and database work; dependency mapping and review warnings when upstream schema context changes |
 | UX | Dark theme, native resizable panes, keyboard shortcuts, loading/empty states, live status, graceful errors |
 
 ---
@@ -114,10 +115,13 @@ Keyboard shortcuts are available from the keyboard icon in the header.
 
 ## Architecture
 
-Stateglass is a native macOS app built with SwiftUI and Swift 6. The UI starts a
-bundled Rust sidecar and exchanges newline-delimited JSON requests and events
-over standard input/output. Rust owns application logic and persistence; Python
-introspection runs in a separate helper process.
+Stateglass is a native macOS app built with SwiftUI and Swift 6. Existing debugging
+workflows still use the Rust sidecar and its versioned JSON-lines protocol. The
+SoloVibe canvas is the first Python-owned feature slice: SwiftUI sends versioned
+JSON-lines requests to a Python service, which persists context nodes and
+dependencies in local SQLite. This is a staged migration; the Rust sidecar remains
+required for the existing editor, execution, tracing, and experiment workflows.
+The canvas and debugger currently use separate local databases.
 
 ```mermaid
 flowchart LR
@@ -137,6 +141,8 @@ flowchart LR
     subgraph Py["Python child process"]
         T["stateglass_tracer.py<br/>run + AST analyze"]
         P["user program"]
+        CS["SoloVibe canvas service"]
+        CST[(Canvas SQLite)]
     end
 
     UI -->|request / response| IPC --> CMD
@@ -152,6 +158,8 @@ flowchart LR
     EX -->|stdout/stderr chunks, trace batches, status| IPC --> UI
     T -->|imports| P
     T -->|AST metadata JSON| XP
+    UI -->|canvas JSON-lines request / response| CS
+    CS --> CST
 ```
 
 ### Rust modules
@@ -169,6 +177,7 @@ flowchart LR
 | `src-tauri/src/sidecar.rs` | JSON-lines method dispatch for the Swift app |
 | `src-tauri/src/bin/stateglass-sidecar.rs` | Sidecar process, request responses, and streamed event transport |
 | `src-tauri/src/models.rs` | Serializable DTOs (serde `camelCase`) shared across process boundary |
+| `python/solovibe/` | Local canvas service, domain persistence, and versioned request dispatch |
 
 ### Native app modules
 
@@ -179,6 +188,9 @@ flowchart LR
 | `xcode/Sources/StateGlass/AppModel.swift` | Main-actor application state and backend workflows |
 | `xcode/Sources/StateGlass/SidecarClient.swift` | Typed asynchronous JSON-lines transport, process lifecycle, and event stream |
 | `xcode/Sources/StateGlass/Models.swift` | Swift DTOs corresponding to Rust serde models |
+| `xcode/Sources/StateGlass/CanvasView.swift` | Native context-node canvas and dependency map |
+| `xcode/Sources/StateGlass/CanvasBackendClient.swift` | Python canvas service transport |
+| `xcode/Sources/StateGlass/CanvasModels.swift` | Typed context nodes, dependencies, and canvas state |
 
 ### IPC surface
 
@@ -188,6 +200,12 @@ request ID and contain either `result` or a typed `error`. Unsolicited event
 messages use the same versioned stream and carry `event` and `payload` fields.
 Long-running executions return immediately and stream output,
 trace batches, metrics, completion, and workspace changes.
+
+The Python canvas service uses the same versioned request/response envelope and
+supports `list_canvas`, `add_node`, `update_node`, `add_dependency`, and
+`remove_dependency`. Its database defaults to
+`~/Library/Application Support/dev.solovibe.app/solovibe.sqlite3`; set
+`SOLOVIBE_DATA_DIR` to override the containing directory.
 
 **Commands:** `bootstrap`, `list_projects`, `open_project`, `create_sample_project`,
 `get_project`, `update_project_config`, `set_project_consent`, `list_files`,
@@ -424,7 +442,7 @@ Integration tests skip nothing — they require Python 3.11+ to be installed.
 ├── package.json               Native dev/build/test entry points
 ├── xcode/
 │   ├── Package.swift          Swift 6 macOS executable package
-│   └── Sources/StateGlass/    SwiftUI app, state, models, and sidecar client
+│   └── Sources/StateGlass/    SwiftUI app, state, canvas, and backend clients
 ├── scripts/                   Native development, build, and test scripts
 ├── src-tauri/
 │   ├── src/                   Rust backend, sidecar protocol, and adapters
@@ -433,6 +451,7 @@ Integration tests skip nothing — they require Python 3.11+ to be installed.
 │   └── Cargo.toml             Rust backend and sidecar targets
 ├── python/
 │   ├── stateglass_tracer.py   Runtime instrumentation + AST analyzer
+│   ├── solovibe/              Local-first canvas service and SQLite store
 │   └── tests/                 unittest suite
 ├── samples/python-demo/       Buggy pricing pipeline used in demos/tests
 ├── src/                       Retained legacy web UI sources

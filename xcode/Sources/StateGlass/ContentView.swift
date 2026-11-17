@@ -354,6 +354,7 @@ private struct CenterWorkspace: View {
 
             Group {
                 switch model.centerTab {
+                case .canvas: CanvasView()
                 case .editor: EditorPanel()
                 case .flow: DataFlowPanel()
                 case .compare: ComparePanel()

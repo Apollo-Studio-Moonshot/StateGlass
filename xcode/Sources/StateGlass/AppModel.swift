@@ -3,6 +3,7 @@ import Foundation
 import AppKit
 
 enum WorkspaceTab: String, CaseIterable, Identifiable {
+    case canvas = "Canvas"
     case editor = "Editor"
     case flow = "Data Flow"
     case compare = "Compare"
@@ -51,6 +52,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var isBusy = false
     @Published var notice: String?
     @Published var centerTab: WorkspaceTab = .editor
+    @Published private(set) var canvasNodes: [ContextNode] = []
+    @Published private(set) var canvasDependencies: [NodeDependency] = []
+    @Published var selectedNodeIDs: Set<String> = []
+    @Published var focusedNodeID: String?
+    @Published var canvasMode: CanvasMode = .build
+    @Published var bottleneck = 0.5
     @Published var runArguments = ""
     @Published var entryPoint = ""
     @Published var timeoutSeconds = 30
@@ -65,6 +72,8 @@ final class AppModel: ObservableObject {
     @Published var runStats: String?
 
     private let client = SidecarClient()
+    private let canvasClient = CanvasBackendClient()
+    private var canvasLoaded = false
     private var buffers: [String: String] = [:]
     private var savedBuffers: [String: String] = [:]
     private var eventTask: Task<Void, Never>?
@@ -89,6 +98,91 @@ final class AppModel: ObservableObject {
 
     var displayRoot: String {
         project?.rootPath ?? ""
+    }
+
+    var focusedCanvasNode: ContextNode? {
+        canvasNodes.first { $0.id == focusedNodeID }
+    }
+
+    func loadCanvasIfNeeded() async {
+        guard !canvasLoaded else { return }
+        await loadCanvas()
+    }
+
+    func loadCanvas() async {
+        do {
+            let snapshot: CanvasSnapshot = try await canvasClient.request("list_canvas")
+            canvasNodes = snapshot.nodes
+            canvasDependencies = snapshot.dependencies
+            canvasLoaded = true
+            if focusedNodeID == nil {
+                focusedNodeID = snapshot.nodes.first?.id
+            }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    func addCanvasNode(_ kind: ContextNodeKind) async {
+        do {
+            let node: ContextNode = try await canvasClient.request("add_node", params: [
+                "kind": kind.rawValue,
+                "title": kind.title,
+            ])
+            canvasNodes.append(node)
+            focusedNodeID = node.id
+            selectedNodeIDs = [node.id]
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    func updateCanvasNode(_ node: ContextNode) async {
+        do {
+            let updated: ContextNode = try await canvasClient.request("update_node", params: [
+                "id": node.id,
+                "title": node.title,
+                "summary": node.summary,
+                "status": node.status.rawValue,
+            ])
+            replaceCanvasNode(updated)
+            await loadCanvas()
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    func addCanvasDependency(from sourceID: String, to targetID: String) async {
+        do {
+            let dependency: NodeDependency = try await canvasClient.request("add_dependency", params: [
+                "sourceId": sourceID,
+                "targetId": targetID,
+            ])
+            canvasDependencies.append(dependency)
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    func removeCanvasDependency(_ dependency: NodeDependency) async {
+        do {
+            let _: Bool = try await canvasClient.request("remove_dependency", params: [
+                "id": dependency.id,
+            ])
+            canvasDependencies.removeAll { $0.id == dependency.id }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    func focusCanvasNode(_ node: ContextNode) {
+        focusedNodeID = node.id
+        selectedNodeIDs = [node.id]
+    }
+
+    private func replaceCanvasNode(_ node: ContextNode) {
+        guard let index = canvasNodes.firstIndex(where: { $0.id == node.id }) else { return }
+        canvasNodes[index] = node
     }
 
     func start() async {

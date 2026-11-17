@@ -1,22 +1,139 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { formatDuration, formatShortDate } from "../lib/format";
+import { rankQuickOpenFiles } from "../lib/quick-open";
 import { completedBaselines, sessionTitle } from "../lib/sessions";
 import { Badge, DropdownSelect, Field, Kbd, Modal, Spinner } from "./ui";
-import { AlertIcon, ExperimentIcon, PlayIcon, PythonIcon } from "./Icons";
+import { AlertIcon, ExperimentIcon, FileIcon, PlayIcon, PythonIcon } from "./Icons";
 
 export function Dialogs() {
   const project = useStore((state) => state.project);
   const consentOpen = useStore((state) => state.consentOpen);
   const newExperimentOpen = useStore((state) => state.newExperimentOpen);
+  const quickOpenOpen = useStore((state) => state.quickOpenOpen);
   const shortcutsOpen = useStore((state) => state.shortcutsOpen);
 
   return (
     <>
       {consentOpen && project && <ConsentDialog />}
       {newExperimentOpen && project && <NewExperimentDialog />}
+      {quickOpenOpen && project && <QuickOpenDialog />}
       {shortcutsOpen && <ShortcutsDialog />}
     </>
+  );
+}
+
+function QuickOpenDialog() {
+  const close = useStore((state) => state.setQuickOpenOpen);
+  const files = useStore((state) => state.files);
+  const openFiles = useStore((state) => state.openFiles);
+  const activeFile = useStore((state) => state.activeFile);
+  const openFile = useStore((state) => state.openFile);
+  const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const openPaths = useMemo(() => openFiles.map((file) => file.path), [openFiles]);
+  const matches = useMemo(
+    () => rankQuickOpenFiles(files, query, openPaths, activeFile),
+    [files, query, openPaths, activeFile],
+  );
+  const visibleMatches = matches.slice(0, 50);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  useEffect(() => {
+    resultsRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
+
+  const openSelected = () => {
+    const file = visibleMatches[selectedIndex];
+    if (!file) return;
+    close(false);
+    void openFile(file.path);
+  };
+
+  return (
+    <Modal
+      title="Quick Open"
+      subtitle="Search files in this workspace"
+      onClose={() => close(false)}
+      width={620}
+    >
+      <div className="quick-open-dialog">
+        <input
+          autoFocus
+          className="input quick-open-input"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" && visibleMatches.length > 0) {
+              event.preventDefault();
+              setSelectedIndex((index) => (index + 1) % visibleMatches.length);
+            } else if (event.key === "ArrowUp" && visibleMatches.length > 0) {
+              event.preventDefault();
+              setSelectedIndex(
+                (index) => (index - 1 + visibleMatches.length) % visibleMatches.length,
+              );
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              openSelected();
+            }
+          }}
+          placeholder="Type a file name or path…"
+          aria-label="Search workspace files"
+          spellCheck={false}
+        />
+        <div
+          className="quick-open-results"
+          role="listbox"
+          aria-label="Matching files"
+          ref={resultsRef}
+        >
+          {visibleMatches.map((file, index) => {
+            const isOpen = openPaths.includes(file.path);
+            return (
+              <button
+                type="button"
+                key={file.path}
+                role="option"
+                aria-selected={selectedIndex === index}
+                className={`quick-open-option${selectedIndex === index ? " selected" : ""}`}
+                onMouseEnter={() => setSelectedIndex(index)}
+                onClick={() => {
+                  setSelectedIndex(index);
+                  close(false);
+                  void openFile(file.path);
+                }}
+              >
+                {file.isPython ? <PythonIcon size={14} /> : <FileIcon size={14} />}
+                <span className="quick-open-name">{file.name}</span>
+                <span className="quick-open-path">{file.path}</span>
+                {isOpen && <span className="quick-open-open-label">Open</span>}
+              </button>
+            );
+          })}
+          {matches.length === 0 && <div className="quick-open-empty">No matching files</div>}
+          {matches.length > visibleMatches.length && (
+            <div className="quick-open-count">Showing 50 of {matches.length} matches</div>
+          )}
+        </div>
+        <div className="quick-open-hint">
+          <span>
+            <Kbd>↑</Kbd> <Kbd>↓</Kbd> to navigate
+          </span>
+          <span>
+            <Kbd>↵</Kbd> to open
+          </span>
+          <span>
+            <Kbd>Esc</Kbd> to close
+          </span>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -265,6 +382,8 @@ function ShortcutsDialog() {
   const close = useStore((state) => state.setShortcutsOpen);
   const rows: Array<[string, string]> = [
     ["Open project folder", "⌘ O"],
+    ["Quick open file", "⌘ P"],
+    ["Close active file", "⌘ W"],
     ["Save active file", "⌘ S"],
     ["Run with tracing", "⌘ ↵"],
     ["Cancel execution", "⌘ ."],
@@ -273,6 +392,7 @@ function ShortcutsDialog() {
     ["Toggle inspector", "⌘ ⇧ B"],
     ["Toggle console", "⌘ J"],
     ["Editor / Data flow / Compare / Experiments", "⌘ 1 … ⌘ 4"],
+    ["Move to start / end of line (editor)", "⌘← / ⌘→"],
     ["Shortcuts", "?"],
     ["Close dialog", "Esc"],
   ];
@@ -300,7 +420,7 @@ function ShortcutsDialog() {
         ))}
       </div>
       <p className="muted small" style={{ marginTop: 16 }}>
-        On Windows and Linux, use Ctrl instead of ⌘.
+        For app shortcuts, use Ctrl instead of ⌘ on Windows and Linux. Editor shortcuts may differ by platform.
       </p>
     </Modal>
   );

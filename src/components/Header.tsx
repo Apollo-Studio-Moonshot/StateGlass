@@ -25,6 +25,7 @@ import {
   PlayIcon,
   PlusIcon,
   RefreshIcon,
+  SearchIcon,
   SettingsIcon,
   StopIcon,
   TerminalIcon,
@@ -44,6 +45,7 @@ export function Header() {
   const setWorkspace = useStore((state) => state.setWorkspace);
   const selectSession = useStore((state) => state.selectSession);
   const setNewExperimentOpen = useStore((state) => state.setNewExperimentOpen);
+  const setQuickOpenOpen = useStore((state) => state.setQuickOpenOpen);
   const setShortcutsOpen = useStore((state) => state.setShortcutsOpen);
   const runAnalysis = useStore((state) => state.runAnalysis);
   const toggleExplorer = useStore((state) => state.toggleExplorer);
@@ -233,6 +235,12 @@ export function Header() {
             </span>
           )}
         </div>
+        <IconButton
+          title="Quick open file (⌘P)"
+          onClick={() => setQuickOpenOpen(true)}
+        >
+          <SearchIcon size={15} />
+        </IconButton>
         <IconButton
           title={analysisError ? `Analysis issue: ${analysisError}` : "Re-analyze project for data flow"}
           onClick={() => void runAnalysis()}
