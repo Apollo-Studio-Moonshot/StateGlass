@@ -273,6 +273,7 @@ function ShortcutsDialog() {
     ["Toggle inspector", "⌘ ⇧ B"],
     ["Toggle console", "⌘ J"],
     ["Editor / Data flow / Compare / Experiments", "⌘ 1 … ⌘ 4"],
+    ["Move to start / end of line (editor)", "⌘← / ⌘→"],
     ["Shortcuts", "?"],
     ["Close dialog", "Esc"],
   ];
@@ -300,7 +301,7 @@ function ShortcutsDialog() {
         ))}
       </div>
       <p className="muted small" style={{ marginTop: 16 }}>
-        On Windows and Linux, use Ctrl instead of ⌘.
+        For app shortcuts, use Ctrl instead of ⌘ on Windows and Linux. Editor shortcuts may differ by platform.
       </p>
     </Modal>
   );
