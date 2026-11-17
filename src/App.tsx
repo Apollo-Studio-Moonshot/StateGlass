@@ -283,6 +283,16 @@ function useHotkeys() {
         void state.saveFile();
         return;
       }
+      if (mod && key === "p" && state.project) {
+        event.preventDefault();
+        state.setQuickOpenOpen(true);
+        return;
+      }
+      if (mod && key === "w" && state.activeFile) {
+        event.preventDefault();
+        state.closeFile(state.activeFile);
+        return;
+      }
       if (mod && event.key === "Enter") {
         event.preventDefault();
         void state.run();

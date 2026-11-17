@@ -118,6 +118,7 @@ interface AppStore {
   runStdin: string;
   consentOpen: boolean;
   newExperimentOpen: boolean;
+  quickOpenOpen: boolean;
   shortcutsOpen: boolean;
   toasts: Toast[];
   busy: string | null;
@@ -160,6 +161,7 @@ interface AppStore {
   toggleInspector: () => void;
   toggleConsole: () => void;
   setNewExperimentOpen: (open: boolean) => void;
+  setQuickOpenOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
   notify: (message: string, tone?: Toast["tone"]) => void;
   dismissToast: (id: string) => void;
@@ -261,6 +263,7 @@ export const useStore = create<AppStore>()((set, get) => ({
   runStdin: "",
   consentOpen: false,
   newExperimentOpen: false,
+  quickOpenOpen: false,
   shortcutsOpen: false,
   toasts: [],
   busy: null,
@@ -908,6 +911,7 @@ export const useStore = create<AppStore>()((set, get) => ({
   toggleInspector: () => set((state) => ({ inspectorOpen: !state.inspectorOpen })),
   toggleConsole: () => set((state) => ({ consoleOpen: !state.consoleOpen })),
   setNewExperimentOpen: (open) => set({ newExperimentOpen: open }),
+  setQuickOpenOpen: (open) => set({ quickOpenOpen: open }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
 
   handleOutput: (sessionId, stream, chunk) => {
