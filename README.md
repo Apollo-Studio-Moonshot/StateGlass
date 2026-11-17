@@ -48,7 +48,7 @@ The original project folder is never modified when creating or running experimen
 | Execution | Python child process, stdout/stderr streamed live, exit codes, timeout with process-group termination, cancellation, peak memory, duration |
 | Tracing | `sys.settrace` helper, NDJSON events, variable history, call/return/exception events, per-line attribution, configurable limits, truncation signalling |
 | Inspection | Variables at any point in the timeline, history for a selected variable, function/line navigation, interactive timeline with filters and scrubbing |
-| Data flow | AST assignment metadata joined with runtime snapshots, lineage view, assignment site table, source navigation |
+| Data flow | AST assignment metadata joined with runtime snapshots, Metal-backed graph rendering, assignment site table, source navigation |
 | Experiments | Isolated project copies, multiple experiments per baseline, replay of recorded entry point/args/stdin/timeout, edit the copy without touching the original |
 | Comparison | Side-by-side metrics, unified output/error diffs, variable diff table, explicit nondeterminism warnings |
 | UX | Dark theme, native resizable panes, keyboard shortcuts, loading/empty states, live status, graceful errors |

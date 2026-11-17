@@ -540,33 +540,8 @@ private struct DataFlowPanel: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.orange)
                     }
-                    ForEach(Array(flow.nodes.enumerated()), id: \.element.id) { index, node in
-                        HStack(spacing: 10) {
-                            Text("\(index + 1)").font(.system(size: 10, design: .monospaced)).foregroundStyle(Palette.muted)
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack {
-                                    Text(node.label).font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Text(node.role.uppercased()).font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.accent)
-                                }
-                                Text(node.value).font(.system(size: 10, design: .monospaced)).foregroundStyle(Palette.muted)
-                                Text("\(node.file ?? "unknown"):\(node.line ?? 0) · \(node.funcName ?? "")")
-                                    .font(.system(size: 9)).foregroundStyle(Palette.muted)
-                            }
-                            Spacer()
-                            Text("#\(node.seq)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Palette.muted)
-                        }
-                        .padding(10)
-                        .background(Palette.panel, in: RoundedRectangle(cornerRadius: 7))
-                        if let edge = flow.edges.first(where: { $0.target == node.id }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: edge.kind == "update" ? "arrow.down" : "arrow.turn.down.right")
-                                Text(edge.label)
-                            }
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(Palette.accent)
-                            .padding(.leading, 25)
-                        }
-                    }
+                    FlowGraphView(flow: flow)
+                        .frame(minHeight: 280)
                     Text("ASSIGNMENT SITES")
                         .font(.system(size: 9, weight: .bold)).tracking(1)
                         .foregroundStyle(Palette.muted)

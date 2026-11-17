@@ -115,10 +115,11 @@ struct FlowNode: Decodable, Identifiable, Sendable {
     let line: Int64?
     let funcName: String?
     let seq: Int64
+    let step: Int64
     let role: String
 
     enum CodingKeys: String, CodingKey {
-        case id, label, value, vtype, file, line, seq, role
+        case id, label, value, vtype, file, line, seq, step, role
         case funcName = "func"
     }
 }
