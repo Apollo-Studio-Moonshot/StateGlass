@@ -12,6 +12,7 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources/python"
 cp "$ROOT/xcode/.build/release/StateGlass" "$CONTENTS/MacOS/StateGlass"
 cp "$ROOT/src-tauri/target/release/stateglass-sidecar" "$CONTENTS/Resources/stateglass-sidecar"
 cp "$ROOT/python/stateglass_tracer.py" "$CONTENTS/Resources/python/stateglass_tracer.py"
+cp -R "$ROOT/python/solovibe" "$CONTENTS/Resources/python/solovibe"
 cp "$ROOT/src-tauri/icons/icon.icns" "$CONTENTS/Resources/AppIcon.icns"
 
 cat > "$CONTENTS/Info.plist" <<'PLIST'
