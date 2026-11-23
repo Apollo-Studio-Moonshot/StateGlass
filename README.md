@@ -52,7 +52,10 @@ The original project folder is never modified when creating or running experimen
 | Experiments | Isolated project copies, multiple experiments per baseline, replay of recorded entry point/args/stdin/timeout, edit the copy without touching the original |
 | Comparison | Side-by-side metrics, unified output/error diffs, variable diff table, explicit nondeterminism warnings |
 | SoloVibe canvas | Local-first context nodes for frontend, billing, marketing, and database work; dependency mapping and review warnings when upstream schema context changes |
-| UX | Dark theme, native resizable panes, keyboard shortcuts, loading/empty states, live status, graceful errors |
+| System integration | Menu bar extra, Dock menu, Finder Services, Share sheet, notifications, Spotlight, Handoff, App Intents/Shortcuts, Keychain, Quick Look, drag-and-drop, AppleScript/JXA |
+| Native UX | Standard `NavigationSplitView` sidebar, inspector, unified toolbar, Settings scene, system search, context menus, keyboard shortcuts, state restoration, semantic dark/light appearance |
+| Apple developer workflow | SwiftPM build, Xcode-compatible package, hardened runtime, optional notarization, optional universal binary, sdef scripting dictionary |
+| UX | System appearance (light/dark), native resizable panes, keyboard shortcuts, loading/empty states, live status, graceful errors |
 
 ---
 
@@ -60,7 +63,7 @@ The original project folder is never modified when creating or running experimen
 
 ### Requirements
 
-- macOS 14 or newer, Xcode with Swift 6, and Rust 1.77+
+- macOS 26 or newer, Xcode 27 with Swift 6.4, and Rust 1.77+
 - Python **3.11 or newer** on `PATH` (a project `.venv` is detected automatically)
 - No Node.js, cloud account, API key, telemetry, or network service is required
 
@@ -123,6 +126,9 @@ dependencies in local SQLite. This is a staged migration; the Rust sidecar remai
 required for the existing editor, execution, tracing, and experiment workflows.
 The canvas and debugger currently use separate local databases.
 
+See [`docs/apple-first-redesign.md`](docs/apple-first-redesign.md) for the Apple-first
+roadmap, API-to-feature mapping, UX changes, implementation plan, and risk analysis.
+
 ```mermaid
 flowchart LR
     subgraph Desktop["macOS app"]
@@ -183,8 +189,16 @@ flowchart LR
 
 | Path | Responsibility |
 | --- | --- |
-| `xcode/Sources/StateGlass/StateGlassApp.swift` | Native app lifecycle and menu keyboard shortcuts |
-| `xcode/Sources/StateGlass/ContentView.swift` | SwiftUI project workspace, editor, trace inspector, flow, experiment, compare, and console panels |
+| `xcode/Sources/StateGlass/StateGlassApp.swift` | Native app lifecycle, scenes, menus, Settings, menu bar extra |
+| `xcode/Sources/StateGlass/ContentView.swift` | SwiftUI workspace shell, sidebar, inspector, toolbar, editor, trace and experiment panels |
+| `xcode/Sources/StateGlass/DesignSystem.swift` | Semantic system-color design tokens and file actions |
+| `xcode/Sources/StateGlass/AppIcon.swift` | SVG icon loader plus the `AppIcon` and `IconLabel` views |
+| `xcode/Sources/StateGlass/Icons/` | Standalone SVG artwork for every UI icon |
+| `xcode/Sources/StateGlass/SystemServices.swift` | Notifications, Spotlight, Handoff, Keychain, Quick Look, sharing, Dock and Services |
+| `xcode/Sources/StateGlass/SettingsView.swift` | Standard macOS Settings panes |
+| `xcode/Sources/StateGlass/AppIntents.swift` | App Intents and Shortcuts |
+| `xcode/Sources/StateGlass/CodeEditor.swift` | Native `NSTextView` code editor |
+| `xcode/Sources/StateGlass/ScriptingSupport.swift` | AppleScript/JXA command bridge |
 | `xcode/Sources/StateGlass/AppModel.swift` | Main-actor application state and backend workflows |
 | `xcode/Sources/StateGlass/SidecarClient.swift` | Typed asynchronous JSON-lines transport, process lifecycle, and event stream |
 | `xcode/Sources/StateGlass/Models.swift` | Swift DTOs corresponding to Rust serde models |
@@ -519,7 +533,7 @@ Per-stream output is capped at 3 MB and traces at 200k events. This is deliberat
 to keep the app responsive.
 
 **The Swift app does not build.**
-Use macOS 14 or newer and Xcode with Swift 6, then run `swift build --package-path xcode`.
+Use macOS 26 or newer and Xcode 27 with Swift 6.4, then run `swift build --package-path xcode`.
 
 ---
 

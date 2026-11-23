@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Stateglass Terminology">
+    <suite name="Stateglass Suite" code="SGlg" description="Automate Stateglass from AppleScript or JavaScript for Automation.">
+        <command name="open project" code="SGop" description="Open a project folder in Stateglass.">
+            <direct-parameter type="text" description="Absolute path to the project folder."/>
+            <cocoa class="OpenProjectScriptCommand"/>
+        </command>
+        <command name="run project" code="SGrn" description="Run the project currently open in Stateglass.">
+            <cocoa class="RunProjectScriptCommand"/>
+        </command>
+    </suite>
+</dictionary>

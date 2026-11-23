@@ -31,7 +31,7 @@ struct FlowGraphView: View {
                 continue
             }
             var path = Path()
-            let color: Color = edge.kind == "update" ? .cyan.opacity(0.82) : .white.opacity(0.34)
+            let color: Color = edge.kind == "update" ? .cyan.opacity(0.82) : Color(nsColor: .tertiaryLabelColor)
             let start: CGPoint
             let end: CGPoint
             if edge.kind == "read" {
@@ -64,16 +64,16 @@ struct FlowGraphView: View {
         for positioned in nodes {
             let node = positioned.node
             let rect = positioned.rect
-            let tint: Color = node.role == "target" ? .cyan : .white.opacity(0.62)
+            let tint: Color = node.role == "target" ? .cyan : Color(nsColor: .secondaryLabelColor)
             let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
 
-            context.fill(shape.path(in: rect), with: .color(Color(red: 0.075, green: 0.09, blue: 0.12)))
+            context.fill(shape.path(in: rect), with: .color(Color(nsColor: .controlBackgroundColor)))
             context.stroke(shape.path(in: rect), with: .color(tint.opacity(0.45)), lineWidth: 1)
 
             drawText(
                 Text(node.label)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.white),
+                    .foregroundColor(Color(nsColor: .labelColor)),
                 at: CGPoint(x: rect.minX + 10, y: rect.minY + 18),
                 in: rect,
                 context: &context
@@ -89,7 +89,7 @@ struct FlowGraphView: View {
             drawText(
                 Text(node.value)
                     .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.7)),
+                    .foregroundColor(Color(nsColor: .secondaryLabelColor)),
                 at: CGPoint(x: rect.minX + 10, y: rect.minY + 55),
                 in: rect,
                 context: &context
@@ -97,7 +97,7 @@ struct FlowGraphView: View {
             drawText(
                 Text("\(node.file.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "unknown"):\(node.line ?? 0) · #\(node.seq)")
                     .font(.system(size: 8, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.48)),
+                    .foregroundColor(Color(nsColor: .tertiaryLabelColor)),
                 at: CGPoint(x: rect.minX + 10, y: rect.minY + 76),
                 in: rect,
                 context: &context

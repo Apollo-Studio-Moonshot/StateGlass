@@ -2,14 +2,14 @@ import SwiftUI
 import AppKit
 
 private enum Palette {
-    static let canvas = Color(red: 0.055, green: 0.067, blue: 0.09)
-    static let panel = Color(red: 0.075, green: 0.09, blue: 0.12)
-    static let raised = Color(red: 0.105, green: 0.125, blue: 0.16)
-    static let border = Color.white.opacity(0.08)
-    static let accent = Color(red: 0.39, green: 0.75, blue: 0.95)
-    static let muted = Color(red: 0.55, green: 0.61, blue: 0.69)
-    static let green = Color(red: 0.39, green: 0.82, blue: 0.61)
-    static let red = Color(red: 0.95, green: 0.42, blue: 0.4)
+    static let canvas = GlassTheme.canvas
+    static let panel = GlassTheme.panel
+    static let raised = GlassTheme.raised
+    static let border = GlassTheme.border
+    static let accent = GlassTheme.accent
+    static let muted = GlassTheme.muted
+    static let green = GlassTheme.green
+    static let red = GlassTheme.red
 }
 
 struct ContentView: View {
@@ -22,8 +22,7 @@ struct ContentView: View {
                     .controlSize(.large)
             } else if let bootError = model.bootError {
                 VStack(spacing: 14) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 36))
+                    AppIcon("alert", size: 36)
                         .foregroundStyle(Palette.red)
                     Text("Stateglass could not start").font(.title2.bold())
                     Text(bootError)
@@ -42,6 +41,9 @@ struct ContentView: View {
         }
         .background(Palette.canvas)
         .task { await model.start() }
+        .onChange(of: model.centerTab) { _, tab in
+            UserDefaults.standard.set(tab.rawValue, forKey: "centerTab")
+        }
         .alert("Run project code?", isPresented: $model.showConsent) {
             Button("Cancel", role: .cancel) {}
             Button("Allow and Run") { Task { await model.grantConsentAndRun() } }
@@ -69,8 +71,7 @@ private struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "waveform.path.ecg.rectangle")
-                .font(.system(size: 48, weight: .light))
+            AppIcon("logo", size: 48)
                 .foregroundStyle(Palette.accent)
             Text("Stateglass")
                 .font(.system(size: 30, weight: .semibold, design: .rounded))
@@ -94,13 +95,13 @@ private struct WelcomeView: View {
                             Task { await model.openRecentProject(project) }
                         } label: {
                             HStack {
-                                Image(systemName: "folder")
+                                AppIcon("folder", size: 14)
                                 VStack(alignment: .leading) {
                                     Text(project.name)
                                     Text(project.rootPath).font(.system(size: 9, design: .monospaced)).foregroundStyle(Palette.muted)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right").foregroundStyle(Palette.muted)
+                                AppIcon("chevron-right", size: 10).foregroundStyle(Palette.muted)
                             }
                             .font(.system(size: 11))
                             .padding(9)
@@ -119,68 +120,72 @@ private struct WelcomeView: View {
 
 private struct WorkspaceView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @SceneStorage("workspace.inspectorVisible") private var showInspector = true
+    @State private var quickLookURL: URL?
 
     var body: some View {
-        VStack(spacing: 0) {
-            WorkspaceToolbar()
-            HSplitView {
-                ProjectSidebar()
-                    .frame(minWidth: 190, idealWidth: 245, maxWidth: 340)
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            ProjectSidebar(quickLookURL: $quickLookURL)
+                .navigationSplitViewColumnWidth(
+                    min: GlassMetrics.sidebarMin,
+                    ideal: GlassMetrics.sidebarIdeal,
+                    max: GlassMetrics.sidebarMax
+                )
+        } detail: {
+            VStack(spacing: 0) {
                 VSplitView {
                     CenterWorkspace()
                         .frame(minWidth: 420, minHeight: 260)
                     ConsolePanel()
-                        .frame(minHeight: 100, idealHeight: 170)
+                        .frame(minHeight: GlassMetrics.consoleMin, idealHeight: GlassMetrics.consoleIdeal)
                 }
-                .frame(minWidth: 420)
-                InspectorSidebar()
-                    .frame(minWidth: 235, idealWidth: 290, maxWidth: 390)
+                StatusBar()
             }
-            .padding(.horizontal, 8)
-            StatusBar()
+            .navigationTitle(model.project?.name ?? "Stateglass")
+            .navigationSubtitle(model.project?.rootPath ?? "")
+            .toolbar { toolbar }
         }
-        .background(Palette.canvas)
+        .inspector(isPresented: $showInspector) {
+            InspectorSidebar()
+                .inspectorColumnWidth(
+                    min: GlassMetrics.inspectorMin,
+                    ideal: GlassMetrics.inspectorIdeal,
+                    max: GlassMetrics.inspectorMax
+                )
+        }
+        .onChange(of: quickLookURL) { _, url in
+            guard let url else { return }
+            QuickLookController.shared.preview(url)
+            quickLookURL = nil
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let folder = urls.first else { return false }
+            Task { await model.openProjectFromURL(folder) }
+            return true
+        }
+        .background(GlassTheme.canvas)
     }
-}
 
-private struct WorkspaceToolbar: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        HStack(spacing: 12) {
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
             Button(action: model.openProjectPanel) {
-                Label("Open", systemImage: "folder")
+                IconLabel("Open", icon: "folder")
             }
             .help("Open a project folder (⌘O)")
-            Button {
-                Task { await model.loadSample() }
-            } label: {
-                Image(systemName: "shippingbox")
+            .accessibilityLabel("Open project")
+        }
+        ToolbarItem(placement: .navigation) {
+            Button { Task { await model.loadSample() } } label: {
+                IconLabel("Sample", icon: "box")
             }
             .help("Load the sample project")
-
-            Divider().frame(height: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.project?.name ?? "Stateglass")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(model.project?.rootPath ?? "")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(Palette.muted)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: 260, alignment: .leading)
-
-            Spacer(minLength: 8)
-
+            .accessibilityLabel("Load sample project")
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
             if !model.sessions.isEmpty {
-                Picker("Run", selection: Binding(
-                    get: { model.activeSession?.id ?? "" },
-                    set: { id in
-                        if let session = model.sessions.first(where: { $0.id == id }) {
-                            Task { await model.selectSession(session) }
-                        }
-                    }
-                )) {
+                Picker("Run", selection: sessionBinding) {
                     ForEach(model.sessions) { session in
                         Text("\(session.kind == "experiment" ? "Experiment" : "Run") · \(session.status)")
                             .tag(session.id)
@@ -188,137 +193,170 @@ private struct WorkspaceToolbar: View {
                 }
                 .labelsHidden()
                 .frame(width: 165)
+                .help("Select a recorded run")
+                .accessibilityLabel("Select a recorded run")
             }
-
-            SettingsMenu()
+            SettingsLink {
+                IconLabel("Run Settings", icon: "sliders")
+            }
+            .help("Run settings")
+            if let root = model.project?.rootPath {
+                ShareLink(item: URL(fileURLWithPath: root)) {
+                    IconLabel("Share", icon: "share")
+                }
+                .help("Share the project folder")
+            }
             if model.isRunning {
                 Button { Task { await model.cancelRun() } } label: {
-                    Label("Cancel", systemImage: "stop.fill")
+                    IconLabel("Cancel", icon: "stop")
                 }
-                .buttonStyle(.bordered)
+                .help("Cancel the running project (⌘.)")
             } else {
                 Button { Task { await model.run() } } label: {
-                    Label("Run", systemImage: "play.fill")
+                    IconLabel("Run", icon: "play")
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return, modifiers: .command)
+                .help("Run the project (⌘↵)")
             }
+            Button { showInspector.toggle() } label: {
+                IconLabel("Inspector", icon: "panel-right")
+            }
+            .help("Show or hide the inspector")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(Palette.panel)
-        .overlay(alignment: .bottom) { Rectangle().fill(Palette.border).frame(height: 1) }
     }
-}
 
-private struct SettingsMenu: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        Menu {
-            TextField("Arguments", text: $model.runArguments)
-            TextField("Entry file", text: $model.entryPoint)
-            TextField("Standard input", text: $model.runStdin)
-            Stepper("Timeout: \(model.timeoutSeconds)s", value: $model.timeoutSeconds, in: 1...600)
-            Toggle("Enable tracing", isOn: $model.tracingEnabled)
-            TextField("Python interpreter (optional)", text: $model.pythonPath)
-            Button("Save Run Settings") {
-                Task {
-                    do {
-                        try await model.saveSettings()
-                        model.notice = "Run settings saved"
-                    } catch {
-                        model.notice = error.localizedDescription
-                    }
+    private var sessionBinding: Binding<String> {
+        Binding(
+            get: { model.activeSession?.id ?? "" },
+            set: { id in
+                if let session = model.sessions.first(where: { $0.id == id }) {
+                    Task { await model.selectSession(session) }
                 }
             }
-            Button("Save Global Python Path") { Task { await model.saveGlobalPythonPath() } }
-        } label: {
-            Image(systemName: "slider.horizontal.3")
-                .frame(width: 28, height: 28)
-        }
-        .menuStyle(.borderlessButton)
-        .help("Run settings")
+        )
     }
 }
 
 private struct ProjectSidebar: View {
     @EnvironmentObject private var model: AppModel
+    @Binding var quickLookURL: URL?
     @State private var filter = ""
 
     private var filteredFiles: [FileEntry] {
         guard !filter.isEmpty else { return model.files }
-        return model.files.filter { $0.path.localizedCaseInsensitiveContains(filter) }
+        return model.files.filter {
+            $0.path.localizedCaseInsensitiveContains(filter)
+                || $0.name.localizedCaseInsensitiveContains(filter)
+        }
+    }
+
+    private var rootURL: URL? {
+        model.project.map { URL(fileURLWithPath: $0.rootPath) }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("PROJECT").font(.system(size: 10, weight: .bold)).tracking(1.2)
-                    .foregroundStyle(Palette.muted)
-                Spacer()
-                Button { Task { await model.refresh() } } label: {
-                    Image(systemName: "arrow.clockwise")
+        List {
+            Section {
+                ForEach(filteredFiles) { file in
+                    fileRow(file)
                 }
-                .buttonStyle(.plain)
-                .help("Refresh project")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-
-            TextField("Filter files", text: $filter)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
-
-            List(filteredFiles) { file in
-                Button {
-                    if !file.isDir { model.selectFile(file.path) }
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: file.isDir ? "folder" : file.isPython ? "curlybraces" : "doc.text")
-                            .foregroundStyle(file.isDir ? Palette.accent : Palette.muted)
-                            .frame(width: 14)
-                        Text(file.name)
-                            .lineLimit(1)
-                            .foregroundStyle(file.path == model.selectedFile ? .white : Palette.muted)
-                        if model.dirtyFiles.contains(file.path) {
-                            Circle().fill(Palette.accent).frame(width: 5, height: 5)
-                        }
+            } header: {
+                HStack {
+                    Text("Project")
+                    Spacer()
+                    Button { Task { await model.refresh() } } label: {
+                        AppIcon("refresh", size: 13)
                     }
-                    .padding(.leading, CGFloat(max(0, file.path.split(separator: "/").count - 1)) * 10)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.borderless)
+                    .help("Refresh project")
+                    .accessibilityLabel("Refresh project")
                 }
-                .buttonStyle(.plain)
-                .listRowBackground(file.path == model.selectedFile ? Palette.raised : .clear)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
 
-            Divider().overlay(Palette.border)
-            VStack(alignment: .leading, spacing: 7) {
-                Text("RECENT RUNS").font(.system(size: 10, weight: .bold)).tracking(1.2)
-                    .foregroundStyle(Palette.muted)
-                ForEach(model.sessions.prefix(5)) { session in
-                    Button {
-                        Task { await model.selectSession(session) }
-                    } label: {
-                        HStack(spacing: 7) {
-                            Circle()
-                                .fill(session.status == "ok" ? Palette.green : session.status == "running" ? Palette.accent : Palette.red)
-                                .frame(width: 6, height: 6)
-                            Text(session.command.isEmpty ? session.kind : session.command)
-                                .lineLimit(1)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(Palette.muted)
+            if !model.sessions.isEmpty {
+                Section("Recent Runs") {
+                    ForEach(model.sessions.prefix(5)) { session in
+                        Button { Task { await model.selectSession(session) } } label: {
+                            HStack(spacing: 7) {
+                                Circle()
+                                    .fill(statusColor(session.status))
+                                    .frame(width: 6, height: 6)
+                                Text(session.command.isEmpty ? session.kind : session.command)
+                                    .font(.caption.monospaced())
+                                    .lineLimit(1)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Run \(session.command), status \(session.status)")
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(12)
         }
-        .background(Palette.panel)
+        .listStyle(.sidebar)
+        .searchable(text: $filter, placement: .sidebar, prompt: "Filter files")
+        .accessibilityLabel("Project files")
+    }
+
+    @ViewBuilder
+    private func fileRow(_ file: FileEntry) -> some View {
+        let isSelected = file.path == model.selectedFile
+        Button {
+            if !file.isDir { model.selectFile(file.path) }
+        } label: {
+            HStack(spacing: 7) {
+                AppIcon(
+                    file.isDir ? "folder" : (file.isPython ? "code" : "file"),
+                    size: 14
+                )
+                    .foregroundStyle(file.isDir ? GlassTheme.accent : GlassTheme.muted)
+                    .frame(width: 14)
+                Text(file.name)
+                    .lineLimit(1)
+                if model.dirtyFiles.contains(file.path) {
+                    Circle().fill(GlassTheme.accent).frame(width: 5, height: 5)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, CGFloat(max(0, file.path.split(separator: "/").count - 1)) * 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(isSelected ? GlassTheme.raised : .clear)
+        .accessibilityLabel(file.name)
+        .accessibilityHint(file.isDir ? "Folder" : "Opens the file in the editor")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu { contextMenu(for: file) }
+        .onDrag { dragProvider(for: file) }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for file: FileEntry) -> some View {
+        if !file.isDir {
+            Button("Open") { model.selectFile(file.path) }
+            Button("Quick Look") { quickLookURL = url(for: file) }
+        }
+        if let url = url(for: file) {
+            Button("Reveal in Finder") { FileActions.reveal(url) }
+            Button("Copy Path") { FileActions.copyPath(url) }
+        }
+    }
+
+    private func url(for file: FileEntry) -> URL? {
+        rootURL?.appendingPathComponent(file.path)
+    }
+
+    private func dragProvider(for file: FileEntry) -> NSItemProvider {
+        guard let url = url(for: file) else { return NSItemProvider() }
+        return NSItemProvider(contentsOf: url) ?? NSItemProvider()
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "ok": GlassTheme.green
+        case "running": GlassTheme.accent
+        default: GlassTheme.red
+        }
     }
 }
 
@@ -327,25 +365,21 @@ private struct CenterWorkspace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                ForEach(WorkspaceTab.allCases) { tab in
-                    Button {
-                        model.centerTab = tab
-                    } label: {
-                        Text(tab.rawValue)
-                            .font(.system(size: 11, weight: model.centerTab == tab ? .semibold : .regular))
-                            .foregroundStyle(model.centerTab == tab ? .white : Palette.muted)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 8)
-                            .background(model.centerTab == tab ? Palette.raised : .clear, in: RoundedRectangle(cornerRadius: 5))
+            HStack(spacing: 10) {
+                Picker("Workspace", selection: $model.centerTab) {
+                    ForEach(WorkspaceTab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
                     }
-                    .buttonStyle(.plain)
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("Workspace view")
                 Spacer()
                 if model.isDirty {
                     Button("Save") { Task { await model.saveFile() } }
                         .buttonStyle(.bordered)
                         .keyboardShortcut("s", modifiers: .command)
+                        .help("Save the current file (⌘S)")
                 }
             }
             .padding(.horizontal, 9)
@@ -406,16 +440,22 @@ private struct EditorPanel: View {
                 .font(.system(size: 10))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                TextEditor(text: Binding(
+                CodeEditor(text: Binding(
                     get: { model.activeContent },
                     set: { model.updateEditor($0) }
                 ))
-                .font(.system(size: 12, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(8)
+                .accessibilityLabel("Source editor for \(selectedFile)")
                 .background(Palette.canvas)
             } else {
-                ContentUnavailableView("No file selected", systemImage: "doc.text", description: Text("Choose a source file from the project explorer."))
+                ContentUnavailableView {
+                    Label {
+                        Text("No file selected")
+                    } icon: {
+                        AppIcon("file", size: 44)
+                    }
+                } description: {
+                    Text("Choose a source file from the project explorer.")
+                }
             }
         }
     }
@@ -469,6 +509,8 @@ private struct InspectorSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(model.selectedVariable == variable.name ? Palette.raised : .clear)
+                    .accessibilityLabel("\(variable.name), type \(variable.vtype), value \(variable.value)")
+                    .accessibilityAddTraits(model.selectedVariable == variable.name ? .isSelected : [])
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -493,13 +535,15 @@ private struct InspectorSidebar: View {
                             Text(event.kind).foregroundStyle(Palette.accent)
                             Text(event.name ?? event.functionName ?? event.file.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "")
                                 .lineLimit(1)
-                                .foregroundStyle(.white.opacity(0.8))
+                                .foregroundStyle(.secondary)
                         }
                         .font(.system(size: 9, design: .monospaced))
                         .padding(.vertical, 2)
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(model.selectedTraceId == event.id ? Palette.raised : .clear)
+                    .accessibilityLabel("Event \(event.seq), \(event.kind), \(event.name ?? event.functionName ?? "")")
+                    .accessibilityAddTraits(model.selectedTraceId == event.id ? .isSelected : [])
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -537,7 +581,7 @@ private struct DataFlowPanel: View {
                         .font(.title3.bold())
                     Text(flow.note).font(.system(size: 11)).foregroundStyle(Palette.muted)
                     if flow.truncated {
-                        Label("The trace was truncated; this graph may be incomplete.", systemImage: "exclamationmark.triangle")
+                        IconLabel("The trace was truncated; this graph may be incomplete.", icon: "alert", size: 12)
                             .font(.system(size: 10))
                             .foregroundStyle(.orange)
                     }
@@ -557,7 +601,15 @@ private struct DataFlowPanel: View {
                 .padding(16)
             }
         } else {
-            ContentUnavailableView("Select a variable", systemImage: "point.3.connected.trianglepath.dotted", description: Text("Choose a variable in the inspector to inspect its data flow."))
+            ContentUnavailableView {
+                Label {
+                    Text("Select a variable")
+                } icon: {
+                    AppIcon("flow", size: 44)
+                }
+            } description: {
+                Text("Choose a variable in the inspector to inspect its data flow.")
+            }
         }
     }
 }
@@ -602,7 +654,7 @@ private struct ComparePanel: View {
                         }
                         if !comparison.warnings.isEmpty {
                             ForEach(comparison.warnings, id: \.self) { warning in
-                                Label(warning, systemImage: "info.circle").font(.system(size: 10)).foregroundStyle(.orange)
+                                IconLabel(warning, icon: "info", size: 11).font(.system(size: 10)).foregroundStyle(.orange)
                             }
                         }
                         Text("STDOUT DIFF").font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(Palette.muted)
@@ -614,7 +666,7 @@ private struct ComparePanel: View {
                             HStack {
                                 Text(item.name).font(.system(size: 10, design: .monospaced))
                                 Text(item.baselineValue ?? "—").foregroundStyle(Palette.muted)
-                                Image(systemName: "arrow.right").foregroundStyle(Palette.muted)
+                                AppIcon("arrow-right", size: 11).foregroundStyle(Palette.muted)
                                 Text(item.experimentValue ?? "—")
                                 Spacer()
                                 Text(item.status.uppercased()).font(.system(size: 8, weight: .bold)).foregroundStyle(item.status == "same" ? Palette.green : Palette.accent)
@@ -626,7 +678,15 @@ private struct ComparePanel: View {
                     .padding(12)
                 }
             } else {
-                ContentUnavailableView("Compare executions", systemImage: "arrow.left.arrow.right", description: Text("Choose a baseline and an experiment execution to view output and variable changes."))
+                ContentUnavailableView {
+                    Label {
+                        Text("Compare executions")
+                    } icon: {
+                        AppIcon("compare", size: 44)
+                    }
+                } description: {
+                    Text("Choose a baseline and an experiment execution to view output and variable changes.")
+                }
                 Spacer()
             }
         }
@@ -672,7 +732,7 @@ private struct ExperimentsPanel: View {
             }
             List(model.experiments) { experiment in
                 HStack(spacing: 10) {
-                    Image(systemName: "testtube.2").foregroundStyle(Palette.accent)
+                    AppIcon("experiment", size: 16).foregroundStyle(Palette.accent)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(experiment.name).font(.system(size: 12, weight: .semibold))
                         Text(experiment.note ?? experiment.path)
@@ -743,7 +803,7 @@ private struct ConsolePanel: View {
             ScrollView {
                 Text(showingStderr ? model.stderr : model.output)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(showingStderr ? Palette.red.opacity(0.9) : .white.opacity(0.82))
+                    .foregroundStyle(showingStderr ? Palette.red.opacity(0.9) : Color.primary.opacity(0.82))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)

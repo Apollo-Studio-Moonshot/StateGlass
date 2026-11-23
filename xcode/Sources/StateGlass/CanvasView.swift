@@ -1,12 +1,12 @@
 import SwiftUI
 
 private enum CanvasPalette {
-    static let panel = Color(red: 0.075, green: 0.09, blue: 0.12)
-    static let raised = Color(red: 0.105, green: 0.125, blue: 0.16)
-    static let border = Color.white.opacity(0.09)
-    static let accent = Color(red: 0.39, green: 0.75, blue: 0.95)
-    static let muted = Color(red: 0.55, green: 0.61, blue: 0.69)
-    static let warning = Color(red: 1, green: 0.68, blue: 0.31)
+    static let panel = GlassTheme.panel
+    static let raised = GlassTheme.raised
+    static let border = GlassTheme.border
+    static let accent = GlassTheme.accent
+    static let muted = GlassTheme.muted
+    static let warning = GlassTheme.warning
 }
 
 struct CanvasView: View {
@@ -30,11 +30,15 @@ struct CanvasView: View {
                         Button {
                             Task { await model.addCanvasNode(kind) }
                         } label: {
-                            Label(kind.title, systemImage: kind.symbol)
+                            Label {
+                                Text(kind.title)
+                            } icon: {
+                                AppIcon(kind.symbol, size: 14)
+                            }
                         }
                     }
                 } label: {
-                    Label("Add context", systemImage: "plus")
+                    IconLabel("Add context", icon: "plus")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -43,11 +47,15 @@ struct CanvasView: View {
             Divider().overlay(CanvasPalette.border)
 
             if model.canvasNodes.isEmpty {
-                ContentUnavailableView(
-                    "Loading your canvas",
-                    systemImage: "square.grid.2x2",
-                    description: Text("Your product context is stored locally.")
-                )
+                ContentUnavailableView {
+                    Label {
+                        Text("Loading your canvas")
+                    } icon: {
+                        AppIcon("grid", size: 44)
+                    }
+                } description: {
+                    Text("Your product context is stored locally.")
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
@@ -107,7 +115,7 @@ private struct ContextNodeCard: View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: node.kind.symbol)
+                    AppIcon(node.kind.symbol, size: 16)
                         .foregroundStyle(CanvasPalette.accent)
                     Text(node.kind.title.uppercased())
                         .font(.system(size: 9, weight: .bold))
@@ -115,15 +123,19 @@ private struct ContextNodeCard: View {
                         .foregroundStyle(CanvasPalette.muted)
                     Spacer()
                     if node.status == .needsReview {
-                        Image(systemName: "exclamationmark.triangle.fill")
+                        AppIcon("alert", size: 13)
                             .foregroundStyle(CanvasPalette.warning)
-                            .symbolEffect(.pulse)
+                            .phaseAnimator([false, true]) { content, pulse in
+                                content.opacity(pulse ? 0.55 : 1)
+                            } animation: { _ in
+                                .easeInOut(duration: 1.1)
+                            }
                             .help("An upstream context change needs review")
                     }
                 }
                 Text(node.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(node.summary.isEmpty ? "Add context for this part of your product." : node.summary)
                     .font(.system(size: 11))
@@ -173,7 +185,7 @@ private struct DependencyMap: View {
                     let target = nodes.first { $0.id == dependency.targetId }
                     HStack(spacing: 8) {
                         Text(source?.title ?? "Unknown")
-                        Image(systemName: "arrow.right")
+                        AppIcon("arrow-right", size: 12)
                             .foregroundStyle(CanvasPalette.accent)
                         Text(target?.title ?? "Unknown")
                         Spacer()
@@ -211,7 +223,7 @@ private struct ContextNodeInspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: node.kind.symbol).foregroundStyle(CanvasPalette.accent)
+                AppIcon(node.kind.symbol, size: 16).foregroundStyle(CanvasPalette.accent)
                 Text("CONTEXT")
                     .font(.system(size: 9, weight: .bold))
                     .tracking(1)
@@ -262,15 +274,14 @@ private struct ContextNodeInspector: View {
 
             ForEach(outgoingDependencies) { dependency in
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.right").foregroundStyle(CanvasPalette.accent)
+                    AppIcon("arrow-right", size: 11).foregroundStyle(CanvasPalette.accent)
                     Text(nodes.first { $0.id == dependency.targetId }?.title ?? "Unknown")
                         .font(.system(size: 10))
                     Spacer()
                     Button {
                         Task { await model.removeCanvasDependency(dependency) }
                     } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
+                        AppIcon("close", size: 10)
                     }
                     .buttonStyle(.plain)
                     .help("Remove dependency")

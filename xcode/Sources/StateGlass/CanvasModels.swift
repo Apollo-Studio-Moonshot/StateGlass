@@ -19,10 +19,10 @@ enum ContextNodeKind: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var symbol: String {
         switch self {
-        case .frontend: "macwindow"
-        case .billing: "creditcard"
+        case .frontend: "window"
+        case .billing: "card"
         case .marketing: "megaphone"
-        case .database: "cylinder.split.1x2"
+        case .database: "database"
         }
     }
 }

@@ -29,6 +29,9 @@ private struct WorkspaceChangedMessage: Decodable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    /// Shared instance used by App Intents, the Dock menu, and Services.
+    static let shared = AppModel()
+
     @Published private(set) var booting = true
     @Published private(set) var bootError: String?
     @Published private(set) var projects: [Project] = []
@@ -199,6 +202,10 @@ final class AppModel: ObservableObject {
             }
             let boot: Bootstrap = try await request("bootstrap")
             _ = boot
+            if let raw = UserDefaults.standard.string(forKey: "centerTab"),
+               let tab = WorkspaceTab(rawValue: raw) {
+                centerTab = tab
+            }
             try await loadProjects()
             if let initialPath = ProcessInfo.processInfo.environment["STATEGLASS_PROJECT_PATH"] {
                 try await openProject(path: initialPath)
@@ -244,6 +251,16 @@ final class AppModel: ObservableObject {
 
     func openRecentProject(_ project: Project) async {
         await runAction { try await self.openProject(path: project.rootPath) }
+    }
+
+    /// Entry point for Finder drops, Services, Handoff, and App Intents.
+    func openProjectFromURL(_ url: URL) async {
+        await runAction { try await self.openProject(path: url.path) }
+    }
+
+    func openProjectFromIntent(path: String) async {
+        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        await openProjectFromURL(url)
     }
 
     func refresh() async {
@@ -588,6 +605,13 @@ final class AppModel: ObservableObject {
         case "run:finished":
             if let finished = try? JSONDecoder().decode(Session.self, from: event.payload) {
                 activeSession = finished
+                if finished.status != "running" {
+                    NotificationService.runFinished(
+                        projectName: project?.name ?? "Project",
+                        status: finished.status,
+                        durationMs: finished.durationMs
+                    )
+                }
             }
             Task { await runAction { try await self.refreshSessions() } }
         case "workspace:changed":
@@ -611,6 +635,8 @@ final class AppModel: ObservableObject {
             comparison = nil
             output = ""
             stderr = ""
+            HandoffService.begin(project: project)
+            SpotlightIndexer.index(project: project)
         }
         self.project = project
         runArguments = project.runArgs.joined(separator: " ")
