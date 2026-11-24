@@ -118,12 +118,12 @@ Keyboard shortcuts are available from the keyboard icon in the header.
 
 ## Architecture
 
-Stateglass is a native macOS app built with SwiftUI and Swift 6. Existing debugging
-workflows still use the Rust sidecar and its versioned JSON-lines protocol. The
+Stateglass is a native macOS app: a SwiftUI frontend and a Rust backend process.
+The Swift app sends versioned JSON-lines to that backend. The
 SoloVibe canvas is the first Python-owned feature slice: SwiftUI sends versioned
 JSON-lines requests to a Python service, which persists context nodes and
-dependencies in local SQLite. This is a staged migration; the Rust sidecar remains
-required for the existing editor, execution, tracing, and experiment workflows.
+dependencies in local SQLite. The Rust process owns project files, execution,
+tracing, and experiments.
 The canvas and debugger currently use separate local databases.
 
 See [`docs/apple-first-redesign.md`](docs/apple-first-redesign.md) for the Apple-first
@@ -172,17 +172,17 @@ flowchart LR
 
 | Module | Responsibility |
 | --- | --- |
-| `src-tauri/src/project.rs` | Open/import folders, ignore rules, entry-point detection, safe path resolution, text read/write, bundled sample |
-| `src-tauri/src/execution.rs` | Child-process lifecycle, streaming pipes, timeout and process-group cleanup, resource sampling, trace-file tailing, event emission |
-| `src-tauri/src/tracing.rs` | NDJSON framing/parsing, variable history queries and data-flow graph construction |
-| `src-tauri/src/experiments.rs` | Recursive project copying, experiment creation, unified diffing, variable comparison, warnings |
-| `src-tauri/src/storage.rs` | SQLite schema, migrations and all persistence queries |
-| `src-tauri/src/python.rs` | Interpreter discovery/validation, tracer location, AST analysis orchestration |
-| `src-tauri/src/watchers.rs` | Debounced filesystem notifications for open workspaces |
-| `src-tauri/src/commands.rs` | Validates and delegates backend commands; exposes reusable service functions |
-| `src-tauri/src/sidecar.rs` | JSON-lines method dispatch for the Swift app |
-| `src-tauri/src/bin/stateglass-sidecar.rs` | Sidecar process, request responses, and streamed event transport |
-| `src-tauri/src/models.rs` | Serializable DTOs (serde `camelCase`) shared across process boundary |
+| `backend/src/project.rs` | Open/import folders, ignore rules, entry-point detection, safe path resolution, text read/write, bundled sample |
+| `backend/src/execution.rs` | Child-process lifecycle, streaming pipes, timeout and process-group cleanup, resource sampling, trace-file tailing, event emission |
+| `backend/src/tracing.rs` | NDJSON framing/parsing, variable history queries and data-flow graph construction |
+| `backend/src/experiments.rs` | Recursive project copying, experiment creation, unified diffing, variable comparison, warnings |
+| `backend/src/storage.rs` | SQLite schema, migrations and all persistence queries |
+| `backend/src/python.rs` | Interpreter discovery/validation, tracer location, AST analysis orchestration |
+| `backend/src/watchers.rs` | Debounced filesystem notifications for open workspaces |
+| `backend/src/commands.rs` | Validates and delegates backend commands; exposes reusable service functions |
+| `backend/src/sidecar.rs` | JSON-lines method dispatch for the Swift app |
+| `backend/src/bin/stateglass-sidecar.rs` | Sidecar process, request responses, and streamed event transport |
+| `backend/src/models.rs` | Serializable DTOs (serde `camelCase`) shared across process boundary |
 | `python/solovibe/` | Local canvas service, domain persistence, and versioned request dispatch |
 
 ### Native app modules
@@ -458,17 +458,16 @@ Integration tests skip nothing — they require Python 3.11+ to be installed.
 │   ├── Package.swift          Swift 6 macOS executable package
 │   └── Sources/StateGlass/    SwiftUI app, state, canvas, and backend clients
 ├── scripts/                   Native development, build, and test scripts
-├── src-tauri/
+├── backend/
 │   ├── src/                   Rust backend, sidecar protocol, and adapters
 │   ├── tests/                 End-to-end execution/experiment tests
 │   ├── examples/seed_demo.rs  Developer data seeding utility
-│   └── Cargo.toml             Rust backend and sidecar targets
+│   └── Cargo.toml             Rust backend and sidecar target
 ├── python/
 │   ├── stateglass_tracer.py   Runtime instrumentation + AST analyzer
 │   ├── solovibe/              Local-first canvas service and SQLite store
 │   └── tests/                 unittest suite
 ├── samples/python-demo/       Buggy pricing pipeline used in demos/tests
-├── src/                       Retained legacy web UI sources
 └── scripts/gen_icons.py       Dependency-free icon generator
 ```
 
@@ -495,12 +494,12 @@ language-neutral event and assignment schemas.
 
 ## Development utilities
 
-`src-tauri/examples/seed_demo.rs` populates a database with a real baseline and a
+`backend/examples/seed_demo.rs` populates a database with a real baseline and a
 real experiment for the sample project (useful for demos, documentation and manual
 QA):
 
 ```bash
-cd src-tauri
+cd backend
 cargo run --example seed_demo -- ../samples/python-demo \
   "$HOME/Library/Application Support/dev.stateglass.app"
 ```

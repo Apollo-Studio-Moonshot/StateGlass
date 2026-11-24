@@ -133,8 +133,8 @@ final class SidecarClient: @unchecked Sendable {
         for _ in 0..<4 {
             repository.deleteLastPathComponent()
         }
-        candidates.append(repository.appendingPathComponent("src-tauri/target/debug/stateglass-sidecar"))
-        candidates.append(repository.appendingPathComponent("src-tauri/target/release/stateglass-sidecar"))
+        candidates.append(repository.appendingPathComponent("backend/target/debug/stateglass-sidecar"))
+        candidates.append(repository.appendingPathComponent("backend/target/release/stateglass-sidecar"))
 
         if let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) {
             return executable

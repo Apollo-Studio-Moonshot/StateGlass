@@ -16,7 +16,6 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessesToUpdate, System};
-use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::{interval, sleep, MissedTickBehavior};
@@ -24,28 +23,22 @@ use tokio::time::{interval, sleep, MissedTickBehavior};
 const MAX_OUTPUT_BYTES: usize = 3_000_000;
 const STDERR_SCAN_LIMIT: usize = 400;
 
-/// Abstraction over Tauri event emission so the execution engine can be tested
-/// without a running application.
+/// Abstraction over event emission so the execution engine can be tested
+/// without a running sidecar.
 pub trait EventSink: Send + Sync + 'static {
     fn emit(&self, event: &str, payload: serde_json::Value);
 }
 
-pub struct TauriSink {
-    app: AppHandle,
-}
-
-impl TauriSink {
-    pub fn new(app: AppHandle) -> Self {
-        Self { app }
-    }
-}
-
-impl EventSink for TauriSink {
-    fn emit(&self, event: &str, payload: serde_json::Value) {
-        if let Err(error) = self.app.emit(event, payload) {
-            tracing::warn!(%error, event, "Failed to emit frontend event");
-        }
-    }
+fn runtime() -> &'static tokio::runtime::Runtime {
+    use std::sync::OnceLock;
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_name("stateglass")
+            .build()
+            .expect("failed to start the Stateglass runtime")
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -197,7 +190,7 @@ impl ExecutionManager {
         let session_for_task = session.clone();
         let trace_path_for_task = trace_path;
         let spec_for_task = spec;
-        tauri::async_runtime::spawn(async move {
+        runtime().spawn(async move {
             execute_run(
                 storage,
                 sink,

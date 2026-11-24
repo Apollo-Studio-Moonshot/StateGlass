@@ -1,4 +1,4 @@
-//! Tauri IPC surface.
+//! Backend command surface used by the JSON-lines sidecar.
 //!
 //! Commands are deliberately thin: they validate/resolve inputs, delegate to
 //! the domain modules, and map errors into the serializable `AppError` shape.
@@ -15,7 +15,6 @@ use crate::tracing as trace_engine;
 use crate::tracing::{TRACE_MAX_DEPTH, TRACE_MAX_EVENTS, TRACE_MAX_LOCALS, TRACE_VALUE_LENGTH};
 use crate::{experiments, project, AppState};
 use std::path::{Path, PathBuf};
-use tauri::State;
 
 fn tracer_for(state: &AppState) -> AppResult<PathBuf> {
     state
@@ -490,62 +489,3 @@ pub fn compare_sessions_core(
     let experiment = state.storage.get_session(&experiment_session_id)?;
     experiments::compare_sessions(&state.storage, &baseline, &experiment)
 }
-
-macro_rules! tauri_command {
-    ($name:ident -> $result:ty => $core:ident) => {
-        #[tauri::command]
-        pub fn $name(state: State<'_, AppState>) -> AppResult<$result> {
-            $core(&state)
-        }
-    };
-    ($name:ident($($arg:ident: $arg_type:ty),+) -> $result:ty => $core:ident) => {
-        #[tauri::command]
-        pub fn $name(
-            state: State<'_, AppState>,
-            $($arg: $arg_type),+
-        ) -> AppResult<$result> {
-            $core(&state, $($arg),+)
-        }
-    };
-}
-
-tauri_command!(bootstrap -> Bootstrap => bootstrap_core);
-tauri_command!(list_python_runtimes(project_id: Option<String>) -> Vec<PythonRuntime> => list_python_runtimes_core);
-tauri_command!(set_global_python_path(path: Option<String>) -> () => set_global_python_path_core);
-tauri_command!(list_projects -> Vec<Project> => list_projects_core);
-tauri_command!(open_project(path: String) -> Project => open_project_core);
-tauri_command!(create_sample_project -> Project => create_sample_project_core);
-tauri_command!(get_project(project_id: String) -> Project => get_project_core);
-tauri_command!(update_project_config(project_id: String, config: ProjectConfigInput) -> Project => update_project_config_core);
-tauri_command!(set_project_consent(project_id: String, granted: bool) -> Project => set_project_consent_core);
-tauri_command!(list_files(project_id: String, experiment_id: Option<String>) -> Vec<FileEntry> => list_files_core);
-tauri_command!(read_file(project_id: String, experiment_id: Option<String>, path: String) -> FileContent => read_file_core);
-tauri_command!(write_file(project_id: String, experiment_id: Option<String>, path: String, content: String) -> FileContent => write_file_core);
-tauri_command!(analyze_workspace(project_id: String, experiment_id: Option<String>) -> AnalysisSummary => analyze_workspace_core);
-tauri_command!(start_run(request: RunRequest) -> Session => start_run_core);
-tauri_command!(cancel_run(session_id: String) -> () => cancel_run_core);
-tauri_command!(list_sessions(project_id: String, limit: Option<u32>) -> Vec<Session> => list_sessions_core);
-tauri_command!(get_session(session_id: String) -> Session => get_session_core);
-tauri_command!(get_session_output(session_id: String) -> SessionOutput => get_session_output_core);
-tauri_command!(list_trace_events(
-    session_id: String,
-    kinds: Option<Vec<String>>,
-    limit: Option<u32>,
-    offset: Option<u32>,
-    tail: Option<bool>
-) -> TracePage => list_trace_events_core);
-tauri_command!(trace_stats(session_id: String) -> TraceStats => trace_stats_core);
-tauri_command!(variables_at(session_id: String, seq: Option<i64>) -> Vec<VariableSnapshot> => variables_at_core);
-tauri_command!(variable_history(session_id: String, name: String, limit: Option<u32>) -> Vec<TraceEvent> => variable_history_core);
-tauri_command!(data_flow(session_id: String, variable: String) -> DataFlow => data_flow_core);
-tauri_command!(create_experiment(
-    project_id: String,
-    baseline_session_id: String,
-    name: String,
-    note: Option<String>
-) -> Experiment => create_experiment_core);
-tauri_command!(list_experiments(project_id: String) -> Vec<Experiment> => list_experiments_core);
-tauri_command!(compare_sessions(
-    baseline_session_id: String,
-    experiment_session_id: String
-) -> SessionComparison => compare_sessions_core);

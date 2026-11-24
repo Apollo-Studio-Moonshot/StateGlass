@@ -36,7 +36,7 @@ The Phase 0 code in this change implements the highest‑impact, lowest‑effort
 3. **Widget content:** is there a genuinely useful glanceable metric (last run status, duration, failure count), or is a widget merely decorative?
 4. **AppleScript surface:** are `open project` / `run project` enough, or do teams need query commands and result objects?
 5. **Intel support:** how long must universal binaries include x86_64?
-6. **Legacy removal:** when may `src/`, `src-tauri/tauri.conf.json`, and the Tauri dev scripts be deleted?
+6. **Legacy removal:** done. The Tauri app and React UI are gone. The shipping app is the SwiftUI frontend plus the Rust backend in `backend/`.
 
 ---
 
@@ -56,7 +56,7 @@ The Phase 0 code in this change implements the highest‑impact, lowest‑effort
 | Architecture | `ContentView.swift` (~780 lines) and `AppModel.swift` (~700 lines) are monoliths | file sizes | Medium |
 | State | Only recent project + center tab persisted | `AppModel.start`, `UserDefaults` | Medium |
 | Sandbox | App runs arbitrary code and child processes with no sandbox strategy | `execution.rs`, Python spawn | High |
-| Legacy | Full Tauri/React tree still present and can drift | `src/`, `src-tauri/`, `package.json` | Medium |
+| Legacy | Tauri and the React UI have been removed | `backend/`, `xcode/` | Low |
 
 **Conclusion:** the app is native in implementation but not yet native in *feel* or *system citizenship*. Phase 0 closes the most visible gaps; the roadmap handles the rest.
 

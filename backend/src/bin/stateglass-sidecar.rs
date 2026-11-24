@@ -59,6 +59,7 @@ fn resource_dir() -> Option<PathBuf> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    stateglass_lib::init_logging();
     let stdout = Arc::new(Mutex::new(io::stdout()));
     let sink = Arc::new(JsonLineSink {
         stdout: stdout.clone(),

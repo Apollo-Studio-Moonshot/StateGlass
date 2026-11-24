@@ -17,24 +17,24 @@ if [[ "${STATEGLASS_UNIVERSAL:-0}" == "1" ]]; then
         "$ROOT/xcode/.build/x86_64-apple-macosx/release/StateGlass" \
         -output "$ROOT/xcode/.build/release/StateGlass"
 
-    cargo build --manifest-path "$ROOT/src-tauri/Cargo.toml" --release --bin stateglass-sidecar --target aarch64-apple-darwin
-    cargo build --manifest-path "$ROOT/src-tauri/Cargo.toml" --release --bin stateglass-sidecar --target x86_64-apple-darwin
+    cargo build --manifest-path "$ROOT/backend/Cargo.toml" --release --bin stateglass-sidecar --target aarch64-apple-darwin
+    cargo build --manifest-path "$ROOT/backend/Cargo.toml" --release --bin stateglass-sidecar --target x86_64-apple-darwin
     lipo -create \
-        "$ROOT/src-tauri/target/aarch64-apple-darwin/release/stateglass-sidecar" \
-        "$ROOT/src-tauri/target/x86_64-apple-darwin/release/stateglass-sidecar" \
-        -output "$ROOT/src-tauri/target/release/stateglass-sidecar"
+        "$ROOT/backend/target/aarch64-apple-darwin/release/stateglass-sidecar" \
+        "$ROOT/backend/target/x86_64-apple-darwin/release/stateglass-sidecar" \
+        -output "$ROOT/backend/target/release/stateglass-sidecar"
 else
-    cargo build --manifest-path "$ROOT/src-tauri/Cargo.toml" --release --bin stateglass-sidecar
+    cargo build --manifest-path "$ROOT/backend/Cargo.toml" --release --bin stateglass-sidecar
     swift build --package-path "$ROOT/xcode" -c release
 fi
 
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources/python"
 cp "$ROOT/xcode/.build/release/StateGlass" "$CONTENTS/MacOS/StateGlass"
-cp "$ROOT/src-tauri/target/release/stateglass-sidecar" "$CONTENTS/Resources/stateglass-sidecar"
+cp "$ROOT/backend/target/release/stateglass-sidecar" "$CONTENTS/Resources/stateglass-sidecar"
 cp "$ROOT/python/stateglass_tracer.py" "$CONTENTS/Resources/python/stateglass_tracer.py"
 cp -R "$ROOT/python/solovibe" "$CONTENTS/Resources/python/solovibe"
-cp "$ROOT/src-tauri/icons/icon.icns" "$CONTENTS/Resources/AppIcon.icns"
+cp "$ROOT/backend/icons/icon.icns" "$CONTENTS/Resources/AppIcon.icns"
 cp "$SUPPORT/Stateglass.sdef" "$CONTENTS/Resources/Stateglass.sdef"
 
 # SwiftPM resource bundle declared in Package.swift (the SVG icon set).

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SIDECAR="$ROOT/src-tauri/target/debug/stateglass-sidecar"
+SIDECAR="$ROOT/backend/target/debug/stateglass-sidecar"
 
-cargo build --manifest-path "$ROOT/src-tauri/Cargo.toml" --bin stateglass-sidecar
+cargo build --manifest-path "$ROOT/backend/Cargo.toml" --bin stateglass-sidecar
 cd "$ROOT/xcode"
 STATEGLASS_SIDECAR_PATH="$SIDECAR" swift run StateGlass
