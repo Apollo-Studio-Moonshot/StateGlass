@@ -10,17 +10,34 @@ struct StateGlassApp: App {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 1050, minHeight: 680)
+                .frame(minWidth: 960, minHeight: 620)
         }
-        .defaultSize(width: 1500, height: 940)
+        .defaultSize(width: 1120, height: 720)
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open Project…") { model.openProjectPanel() }
                     .keyboardShortcut("o", modifiers: .command)
                 Button("Load Sample Project") { Task { await model.loadSample() } }
+                Divider()
                 Button("Save File") { Task { await model.saveFile() } }
                     .keyboardShortcut("s", modifiers: .command)
+                    .disabled(model.selectedFile == nil)
+                Button("Close Editor") {
+                    if let path = model.selectedFile { model.requestClose(path) }
+                }
+                .keyboardShortcut("w", modifiers: .command)
+                .disabled(model.selectedFile == nil)
+            }
+
+            CommandGroup(replacing: .printItem) {}
+
+            CommandMenu("Go") {
+                Button("Go to File…") { model.presentPalette(.files) }
+                    .keyboardShortcut("p", modifiers: .command)
+                    .disabled(model.project == nil)
+                Button("Command Palette…") { model.presentPalette(.commands) }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
             }
 
             CommandMenu("Run") {
@@ -47,6 +64,12 @@ struct StateGlassApp: App {
                     .keyboardShortcut("3", modifiers: .command)
                 Button("Experiments") { model.centerTab = .experiments }
                     .keyboardShortcut("4", modifiers: .command)
+                Divider()
+                Button(model.showInspector ? "Hide Inspector" : "Show Inspector") {
+                    model.showInspector.toggle()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .disabled(model.project == nil)
             }
 
             SidebarCommands()

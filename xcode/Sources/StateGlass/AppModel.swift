@@ -73,12 +73,21 @@ final class AppModel: ObservableObject {
     @Published var experimentNote = ""
     @Published var settingsError: String?
     @Published var runStats: String?
+    @Published var showInspector = UserDefaults.standard.object(forKey: "workspace.inspectorVisible") as? Bool ?? true
+    @Published var palette: PaletteKind?
+    @Published var closePrompt: String?
+    @Published private(set) var editorLine = 1
+    @Published private(set) var editorColumn = 1
+    @Published private(set) var revealLine: Int?
+    @Published private(set) var revealToken = 0
+    @Published var statusNote: String?
 
     private let client = SidecarClient()
     private let canvasClient = CanvasBackendClient()
     private var canvasLoaded = false
     private var buffers: [String: String] = [:]
     private var savedBuffers: [String: String] = [:]
+    private var openOrder: [String] = []
     private var eventTask: Task<Void, Never>?
 
     var activeContent: String {
@@ -87,7 +96,15 @@ final class AppModel: ObservableObject {
     }
 
     var openFilePaths: [String] {
-        buffers.keys.sorted()
+        openOrder
+    }
+
+    var editorLanguage: String {
+        selectedFile.map(SourceLanguage.id(for:)) ?? "text"
+    }
+
+    var editorLanguageLabel: String {
+        SourceLanguage.label(for: editorLanguage)
     }
 
     var isDirty: Bool {
@@ -287,7 +304,10 @@ final class AppModel: ObservableObject {
             return
         }
         selectedFile = nil
-        if let firstFile = files.first(where: { !$0.isDir }) {
+        let remembered = UserDefaults.standard.string(forKey: Self.editorFileKey(project.id))
+        if let remembered, files.contains(where: { $0.path == remembered && !$0.isDir }) {
+            try await openFile(remembered)
+        } else if let firstFile = files.first(where: { !$0.isDir }) {
             try await openFile(firstFile.path)
         }
     }
@@ -309,11 +329,60 @@ final class AppModel: ObservableObject {
             buffers[path] = file.content
             savedBuffers[path] = file.content
         }
+        if !openOrder.contains(path) {
+            openOrder.append(path)
+        }
         selectedFile = path
+        UserDefaults.standard.set(path, forKey: Self.editorFileKey(project.id))
     }
 
     func selectFile(_ path: String) {
+        palette = nil
+        centerTab = .editor
+        revealLine = nil
         Task { await runAction { try await self.openFile(path) } }
+    }
+
+    func requestClose(_ path: String) {
+        if dirtyFiles.contains(path) {
+            closePrompt = path
+        } else {
+            closeFile(path)
+        }
+    }
+
+    func confirmDiscardClose() {
+        guard let path = closePrompt else { return }
+        closePrompt = nil
+        closeFile(path)
+    }
+
+    func closeFile(_ path: String) {
+        buffers[path] = nil
+        savedBuffers[path] = nil
+        dirtyFiles.remove(path)
+        openOrder.removeAll { $0 == path }
+        if selectedFile == path {
+            selectedFile = openOrder.last
+            revealLine = nil
+        }
+    }
+
+    func presentPalette(_ kind: PaletteKind) {
+        palette = palette == kind ? nil : kind
+    }
+
+    func updateCursor(line: Int, column: Int) {
+        if editorLine != line { editorLine = line }
+        if editorColumn != column { editorColumn = column }
+    }
+
+    func flashStatus(_ message: String) {
+        statusNote = message
+        Task {
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            if statusNote == message { statusNote = nil }
+        }
     }
 
     func updateEditor(_ content: String) {
@@ -338,7 +407,7 @@ final class AppModel: ObservableObject {
             self.buffers[selectedFile] = saved.content
             self.savedBuffers[selectedFile] = saved.content
             self.dirtyFiles.remove(selectedFile)
-            self.notice = "Saved \(selectedFile)"
+            self.flashStatus("Saved \(URL(fileURLWithPath: selectedFile).lastPathComponent)")
         }
     }
 
@@ -456,6 +525,11 @@ final class AppModel: ObservableObject {
                 let file = String(relative.dropFirst(root.count + 1))
                 do {
                     try await openFile(file)
+                    centerTab = .editor
+                    if let line = event.line, let value = Int(exactly: line), value > 0 {
+                        revealLine = value
+                        revealToken += 1
+                    }
                 } catch {
                     notice = error.localizedDescription
                 }
@@ -650,7 +724,15 @@ final class AppModel: ObservableObject {
         selectedFile = nil
         buffers.removeAll()
         savedBuffers.removeAll()
+        openOrder.removeAll()
         dirtyFiles.removeAll()
+        revealLine = nil
+        editorLine = 1
+        editorColumn = 1
+    }
+
+    private static func editorFileKey(_ projectId: String) -> String {
+        "editor.openFile.\(projectId)"
     }
 
     private func splitArguments(_ input: String) -> [String] {

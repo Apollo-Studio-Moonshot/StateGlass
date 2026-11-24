@@ -12,8 +12,32 @@ private enum Palette {
     static let red = GlassTheme.red
 }
 
+/// The previous default frame was 1500×940. Shrink that restored window once
+/// so the larger type sits in a window of the same scale.
+private struct WindowBalance: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { BalanceView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class BalanceView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        let key = "window.balancedFrame"
+        guard let window, !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let size = window.frame.size
+        guard size.width > 1280 || size.height > 820 else { return }
+        var frame = window.frame
+        let next = NSSize(width: 1120, height: 720)
+        frame.origin.y += frame.height - next.height
+        frame.size = next
+        window.setFrame(frame, display: true, animate: false)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -40,6 +64,7 @@ struct ContentView: View {
             }
         }
         .background(Palette.canvas)
+        .background(WindowBalance())
         .task { await model.start() }
         .onChange(of: model.centerTab) { _, tab in
             UserDefaults.standard.set(tab.rawValue, forKey: "centerTab")
@@ -63,6 +88,28 @@ struct ContentView: View {
                 .environmentObject(model)
                 .frame(width: 420)
         }
+        .confirmationDialog(
+            "Discard unsaved changes?",
+            isPresented: Binding(
+                get: { model.closePrompt != nil },
+                set: { if !$0 { model.closePrompt = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Discard Changes", role: .destructive) { model.confirmDiscardClose() }
+            Button("Cancel", role: .cancel) { model.closePrompt = nil }
+        } message: {
+            if let path = model.closePrompt {
+                Text("\(URL(fileURLWithPath: path).lastPathComponent) has unsaved edits.")
+            }
+        }
+        .overlay {
+            if let kind = model.palette {
+                CommandPalette(kind: kind)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: model.palette)
     }
 }
 
@@ -87,8 +134,8 @@ private struct WelcomeView: View {
             }
             if !model.projects.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("RECENT PROJECTS")
-                        .font(.system(size: 10, weight: .bold)).tracking(1)
+                    Text("Recent")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(Palette.muted)
                     ForEach(model.projects) { project in
                         Button {
@@ -98,12 +145,12 @@ private struct WelcomeView: View {
                                 AppIcon("folder", size: 14)
                                 VStack(alignment: .leading) {
                                     Text(project.name)
-                                    Text(project.rootPath).font(.system(size: 9, design: .monospaced)).foregroundStyle(Palette.muted)
+                                    Text(project.rootPath).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
                                 }
                                 Spacer()
                                 AppIcon("chevron-right", size: 10).foregroundStyle(Palette.muted)
                             }
-                            .font(.system(size: 11))
+                            .font(.system(size: 13))
                             .padding(9)
                             .background(Palette.panel, in: RoundedRectangle(cornerRadius: 6))
                         }
@@ -121,7 +168,6 @@ private struct WelcomeView: View {
 private struct WorkspaceView: View {
     @EnvironmentObject private var model: AppModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @SceneStorage("workspace.inspectorVisible") private var showInspector = true
     @State private var quickLookURL: URL?
 
     var body: some View {
@@ -146,7 +192,7 @@ private struct WorkspaceView: View {
             .navigationSubtitle(model.project?.rootPath ?? "")
             .toolbar { toolbar }
         }
-        .inspector(isPresented: $showInspector) {
+        .inspector(isPresented: $model.showInspector) {
             InspectorSidebar()
                 .inspectorColumnWidth(
                     min: GlassMetrics.inspectorMin,
@@ -163,6 +209,9 @@ private struct WorkspaceView: View {
             guard let folder = urls.first else { return false }
             Task { await model.openProjectFromURL(folder) }
             return true
+        }
+        .onChange(of: model.showInspector) { _, shown in
+            UserDefaults.standard.set(shown, forKey: "workspace.inspectorVisible")
         }
         .background(GlassTheme.canvas)
     }
@@ -218,10 +267,10 @@ private struct WorkspaceView: View {
                 .buttonStyle(.borderedProminent)
                 .help("Run the project (⌘↵)")
             }
-            Button { showInspector.toggle() } label: {
+            Button { model.showInspector.toggle() } label: {
                 IconLabel("Inspector", icon: "panel-right")
             }
-            .help("Show or hide the inspector")
+            .help("Show or hide the inspector (⌘⌥I)")
         }
     }
 
@@ -282,7 +331,7 @@ private struct ProjectSidebar: View {
                                     .fill(statusColor(session.status))
                                     .frame(width: 6, height: 6)
                                 Text(session.command.isEmpty ? session.kind : session.command)
-                                    .font(.caption.monospaced())
+                                    .font(.system(size: 12, design: .monospaced))
                                     .lineLimit(1)
                                     .foregroundStyle(.secondary)
                             }
@@ -305,10 +354,7 @@ private struct ProjectSidebar: View {
             if !file.isDir { model.selectFile(file.path) }
         } label: {
             HStack(spacing: 7) {
-                AppIcon(
-                    file.isDir ? "folder" : (file.isPython ? "code" : "file"),
-                    size: 14
-                )
+                AppIcon(FileIcons.name(for: file.path, isDir: file.isDir), size: 14)
                     .foregroundStyle(file.isDir ? GlassTheme.accent : GlassTheme.muted)
                     .frame(width: 14)
                 Text(file.name)
@@ -318,10 +364,12 @@ private struct ProjectSidebar: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, CGFloat(max(0, file.path.split(separator: "/").count - 1)) * 10)
+            .padding(.leading, CGFloat(max(0, file.path.split(separator: "/").count - 1)) * 12)
+            .font(.system(size: 13))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
         .listRowBackground(isSelected ? GlassTheme.raised : .clear)
         .accessibilityLabel(file.name)
         .accessibilityHint(file.isDir ? "Folder" : "Opens the file in the editor")
@@ -373,18 +421,13 @@ private struct CenterWorkspace: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(maxWidth: 460)
                 .accessibilityLabel("Workspace view")
-                Spacer()
-                if model.isDirty {
-                    Button("Save") { Task { await model.saveFile() } }
-                        .buttonStyle(.bordered)
-                        .keyboardShortcut("s", modifiers: .command)
-                        .help("Save the current file (⌘S)")
-                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 9)
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Palette.panel)
+            .background(GlassTheme.chrome)
 
             Group {
                 switch model.centerTab {
@@ -404,60 +447,122 @@ private struct CenterWorkspace: View {
 
 private struct EditorPanel: View {
     @EnvironmentObject private var model: AppModel
+    @State private var hoveredTab: String?
 
     var body: some View {
         VStack(spacing: 0) {
             if !model.openFilePaths.isEmpty {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 0) {
                         ForEach(model.openFilePaths, id: \.self) { path in
-                            Button {
-                                model.selectFile(path)
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Text(URL(fileURLWithPath: path).lastPathComponent)
-                                    if model.dirtyFiles.contains(path) { Circle().fill(Palette.accent).frame(width: 5, height: 5) }
-                                }
-                                .font(.system(size: 10))
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 7)
-                                .background(model.selectedFile == path ? Palette.raised : .clear)
-                            }
-                            .buttonStyle(.plain)
+                            editorTab(path)
                         }
                     }
                 }
                 .scrollIndicators(.hidden)
-                .background(Palette.panel)
+                .background(GlassTheme.chrome)
+                Divider()
             }
             if let selectedFile = model.selectedFile {
-                HStack {
-                    Text(selectedFile).font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Palette.muted)
-                    Spacer()
-                    if model.isDirty { Text("Modified").foregroundStyle(Palette.accent) }
-                }
-                .font(.system(size: 10))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                CodeEditor(text: Binding(
-                    get: { model.activeContent },
-                    set: { model.updateEditor($0) }
-                ))
+                breadcrumb(selectedFile)
+                CodeEditor(
+                    text: Binding(
+                        get: { model.activeContent },
+                        set: { model.updateEditor($0) }
+                    ),
+                    language: model.editorLanguage,
+                    traceLine: model.revealLine,
+                    revealToken: model.revealToken,
+                    onCursorChange: { line, column in
+                        model.updateCursor(line: line, column: column)
+                    }
+                )
                 .accessibilityLabel("Source editor for \(selectedFile)")
-                .background(Palette.canvas)
+                .background(GlassTheme.editor)
             } else {
                 ContentUnavailableView {
                     Label {
-                        Text("No file selected")
+                        Text("No file open")
                     } icon: {
                         AppIcon("file", size: 44)
                     }
                 } description: {
-                    Text("Choose a source file from the project explorer.")
+                    Text("Choose a file from the sidebar, or press ⌘P.")
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(GlassTheme.editor)
             }
         }
+        .background(GlassTheme.editor)
+    }
+
+    private func editorTab(_ path: String) -> some View {
+        let selected = model.selectedFile == path
+        let dirty = model.dirtyFiles.contains(path)
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        return HStack(spacing: 6) {
+            Button {
+                model.selectFile(path)
+            } label: {
+                HStack(spacing: 6) {
+                    AppIcon(FileIcons.name(for: path, isDir: false), size: 14)
+                        .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    Text(name)
+                        .lineLimit(1)
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(selected ? Color.primary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(dirty ? "\(name), unsaved" : name)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+
+            Button {
+                model.requestClose(path)
+            } label: {
+                ZStack {
+                    if dirty && hoveredTab != path {
+                        Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                    } else {
+                        AppIcon("close", size: 11)
+                            .foregroundStyle(.secondary)
+                            .opacity(hoveredTab == path || selected ? 1 : 0)
+                    }
+                }
+                .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close \(name)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(selected ? GlassTheme.editor : Color.clear)
+        .onHover { hovering in
+            hoveredTab = hovering ? path : (hoveredTab == path ? nil : hoveredTab)
+        }
+    }
+
+    private func breadcrumb(_ path: String) -> some View {
+        let parts = path.split(separator: "/").map(String.init)
+        return HStack(spacing: 4) {
+            ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                Text(part)
+                    .foregroundStyle(index == parts.count - 1 ? Color.primary : Color.secondary)
+                if index < parts.count - 1 {
+                    AppIcon("chevron-right", size: 10)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if let line = model.revealLine {
+                Text(":\(line)")
+                    .foregroundStyle(GlassTheme.warning)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 13))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(GlassTheme.editor)
     }
 }
 
@@ -477,11 +582,11 @@ private struct InspectorSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("INSPECTOR").font(.system(size: 10, weight: .bold)).tracking(1.2)
+                Text("Inspector").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 if let session = model.activeSession {
                     Text(session.status.uppercased())
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(session.status == "ok" ? Palette.green : Palette.accent)
                 }
             }
@@ -489,7 +594,7 @@ private struct InspectorSidebar: View {
             .padding(11)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("VARIABLES").font(.system(size: 9, weight: .bold)).tracking(1)
+                Text("Variables").font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Palette.muted)
                 List(model.variables) { variable in
                     Button {
@@ -497,11 +602,11 @@ private struct InspectorSidebar: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
-                                Text(variable.name).font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                Text(variable.name).font(.system(size: 13, weight: .semibold, design: .monospaced))
                                 Spacer()
-                                Text(variable.vtype).font(.system(size: 9)).foregroundStyle(Palette.muted)
+                                Text(variable.vtype).font(.system(size: 12)).foregroundStyle(Palette.muted)
                             }
-                            Text(variable.value).font(.system(size: 10, design: .monospaced))
+                            Text(variable.value).font(.system(size: 12, design: .monospaced))
                                 .foregroundStyle(Palette.muted)
                                 .lineLimit(2)
                         }
@@ -517,11 +622,11 @@ private struct InspectorSidebar: View {
 
                 Divider().overlay(Palette.border)
                 HStack {
-                    Text("TIMELINE").font(.system(size: 9, weight: .bold)).tracking(1)
+                    Text("Timeline").font(.system(size: 13, weight: .semibold))
                     Spacer()
                     Text("\(model.traceEvents.count) events")
                 }
-                .font(.system(size: 9))
+                .font(.system(size: 12))
                 .foregroundStyle(Palette.muted)
 
                 TextField("Filter events", text: $eventFilter)
@@ -537,8 +642,8 @@ private struct InspectorSidebar: View {
                                 .lineLimit(1)
                                 .foregroundStyle(.secondary)
                         }
-                        .font(.system(size: 9, design: .monospaced))
-                        .padding(.vertical, 2)
+                        .font(.system(size: 12, design: .monospaced))
+                        .padding(.vertical, 3)
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(model.selectedTraceId == event.id ? Palette.raised : .clear)
@@ -554,12 +659,12 @@ private struct InspectorSidebar: View {
             if let selectedVariable = model.selectedVariable {
                 Divider().overlay(Palette.border)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(selectedVariable) HISTORY")
-                        .font(.system(size: 9, weight: .bold)).tracking(0.8)
+                    Text("\(selectedVariable) history")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Palette.muted)
                     ForEach(model.variableHistory.prefix(5)) { item in
                         Text("#\(item.seq)  \(item.value ?? "")")
-                            .font(.system(size: 9, design: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
                             .lineLimit(1)
                     }
                 }
@@ -783,26 +888,29 @@ private struct ConsolePanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("CONSOLE").font(.system(size: 9, weight: .bold)).tracking(1)
-                Button("stdout") { showingStderr = false }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(showingStderr ? Palette.muted : Palette.accent)
-                Button("stderr") { showingStderr = true }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(showingStderr ? Palette.accent : Palette.muted)
+            HStack(spacing: 10) {
+                Text("Console")
+                    .font(.system(size: 13, weight: .semibold))
+                Picker("Stream", selection: $showingStderr) {
+                    Text("stdout").tag(false)
+                    Text("stderr").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: 148)
                 Spacer()
                 if let runStats = model.runStats {
-                    Text("Elapsed \(runStats)").foregroundStyle(Palette.muted)
+                    Text(runStats).foregroundStyle(Palette.muted)
                 }
             }
-            .font(.system(size: 9))
-            .foregroundStyle(Palette.muted)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .font(.system(size: 13))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             ScrollView {
                 Text(showingStderr ? model.stderr : model.output)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(showingStderr ? Palette.red.opacity(0.9) : Color.primary.opacity(0.82))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -817,22 +925,42 @@ private struct StatusBar: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(model.isRunning ? Palette.accent : model.activeSession?.status == "ok" ? Palette.green : Palette.muted)
-                .frame(width: 6, height: 6)
-            Text(model.isRunning ? "Running" : model.activeSession?.status.capitalized ?? "Ready")
-            if let activeSession = model.activeSession {
-                Text(activeSession.command).lineLimit(1).foregroundStyle(Palette.muted)
+        HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(model.isRunning ? Palette.accent : model.activeSession?.status == "ok" ? Palette.green : Palette.muted)
+                    .frame(width: 6, height: 6)
+                Text(model.isRunning ? "Running" : model.activeSession?.status.capitalized ?? "Ready")
+                if let activeSession = model.activeSession {
+                    Text(activeSession.command)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Spacer()
-            if model.isBusy { ProgressView().controlSize(.small) }
-            Text("⌘O Open  ·  ⌘S Save  ·  ⌘↵ Run")
-                .foregroundStyle(Palette.muted)
+            Spacer(minLength: 8)
+            if model.isBusy { ProgressView().controlSize(.mini) }
+            if let note = model.statusNote {
+                statusItem(note)
+            }
+            if model.selectedFile != nil {
+                statusItem(model.editorLanguageLabel)
+                statusItem("Indent: 4")
+                statusItem("Ln \(model.editorLine), Col \(model.editorColumn)")
+            }
         }
-        .font(.system(size: 9, design: .monospaced))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Palette.panel)
+        .font(.system(size: 12))
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .frame(height: 28)
+        .background(GlassTheme.chrome)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func statusItem(_ title: String) -> some View {
+        Text(title)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
     }
 }

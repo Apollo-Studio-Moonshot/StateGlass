@@ -20,6 +20,22 @@ enum GlassTheme {
     static let green = Color(nsColor: .systemGreen)
     static let red = Color(nsColor: .systemRed)
     static let warning = Color(nsColor: .systemOrange)
+    /// Code surface. Matches `NSTextView` so the gutter, tabs, and editor read as one plane.
+    static let editor = Color(nsColor: .textBackgroundColor)
+    /// Window chrome behind tabs and the status bar.
+    static let chrome = Color(nsColor: .windowBackgroundColor)
+}
+
+enum FileIcons {
+    static func name(for path: String, isDir: Bool) -> String {
+        if isDir { return "folder" }
+        switch URL(fileURLWithPath: path).pathExtension.lowercased() {
+        case "py", "swift", "js", "jsx", "ts", "tsx", "rs", "json":
+            return "code"
+        default:
+            return "file"
+        }
+    }
 }
 
 enum GlassMetrics {

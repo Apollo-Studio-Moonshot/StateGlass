@@ -12,9 +12,16 @@ import UserNotifications
 enum NotificationService {
     private static let logger = Logger(subsystem: "dev.stateglass.app", category: "notifications")
 
+    /// UserNotifications throws an ObjC exception, not a Swift error, when the
+    /// process is a bare `swift run` binary with no app bundle.
+    private static var isBundledApp: Bool {
+        Bundle.main.bundleURL.pathExtension == "app"
+    }
+
     /// `UNUserNotificationCenter` — requested once at launch. The user can
     /// change this at any time in System Settings, so failures are non-fatal.
     static func requestAuthorization() async {
+        guard isBundledApp else { return }
         do {
             _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
         } catch {
@@ -23,6 +30,7 @@ enum NotificationService {
     }
 
     static func runFinished(projectName: String, status: String, durationMs: Int64?) {
+        guard isBundledApp else { return }
         guard UserDefaults.standard.object(forKey: "notifyOnRunFinish") as? Bool ?? true else { return }
         let content = UNMutableNotificationContent()
         content.title = status == "ok" ? "Run finished" : "Run \(status)"
