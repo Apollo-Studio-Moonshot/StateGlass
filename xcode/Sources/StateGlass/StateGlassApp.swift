@@ -19,6 +19,8 @@ struct StateGlassApp: App {
                 Button("Open Project…") { model.openProjectPanel() }
                     .keyboardShortcut("o", modifiers: .command)
                 Button("Load Sample Project") { Task { await model.loadSample() } }
+                Button("Share Project Folder…") { model.shareProjectFolder() }
+                    .disabled(model.project == nil)
                 Divider()
                 Button("Save File") { Task { await model.saveFile() } }
                     .keyboardShortcut("s", modifiers: .command)
@@ -38,6 +40,9 @@ struct StateGlassApp: App {
                     .disabled(model.project == nil)
                 Button("Command Palette…") { model.presentPalette(.commands) }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
+                Divider()
+                Button("Show Getting Started") { model.setGuideVisible(true) }
+                    .disabled(model.project == nil)
             }
 
             CommandMenu("Run") {
@@ -54,21 +59,25 @@ struct StateGlassApp: App {
 
             CommandGroup(after: .sidebar) {
                 Divider()
-                Button("Canvas") { model.centerTab = .canvas }
+                Button("Notes") { model.centerTab = .canvas }
                     .keyboardShortcut("0", modifiers: .command)
-                Button("Editor") { model.centerTab = .editor }
+                    .help("Product notes (Canvas)")
+                Button("Code") { model.centerTab = .editor }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Data Flow") { model.centerTab = .flow }
+                    .help("Editor")
+                Button("Trace") { model.centerTab = .flow }
                     .keyboardShortcut("2", modifiers: .command)
+                    .help("Data flow")
                 Button("Compare") { model.centerTab = .compare }
                     .keyboardShortcut("3", modifiers: .command)
                 Button("Experiments") { model.centerTab = .experiments }
                     .keyboardShortcut("4", modifiers: .command)
                 Divider()
-                Button(model.showInspector ? "Hide Inspector" : "Show Inspector") {
+                Button(model.showInspector ? "Hide Recorded Values" : "Show Recorded Values") {
                     model.showInspector.toggle()
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
+                .help("Inspector")
                 .disabled(model.project == nil)
             }
 

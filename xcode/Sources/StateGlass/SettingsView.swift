@@ -17,27 +17,39 @@ struct SettingsView: View {
             privacySettings
                 .tabItem { IconLabel("Privacy", icon: "shield") }
         }
-        .frame(width: 540, height: 380)
+        .frame(width: 540, height: 460)
     }
 
     private var executionSettings: some View {
         Form {
-            Section("Run Configuration") {
+            Section {
                 TextField("Entry file", text: $model.entryPoint)
                     .textFieldStyle(.roundedBorder)
+                    .help("The file Stateglass runs.")
+                    .accessibilityLabel("Entry file")
                 TextField("Arguments", text: $model.runArguments)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Arguments")
                 TextField("Standard input", text: $model.runStdin)
                     .textFieldStyle(.roundedBorder)
+                    .help("Text passed to the program as stdin")
+                    .accessibilityLabel("Standard input")
                 Stepper(value: $model.timeoutSeconds, in: 1...600) {
                     LabeledContent("Timeout", value: "\(model.timeoutSeconds) s")
                 }
-                Toggle("Enable tracing", isOn: $model.tracingEnabled)
+                Toggle("Record values", isOn: $model.tracingEnabled)
+                    .help("Turn this off only if you want output without recorded values.")
+            } header: {
+                Text("Run configuration")
+            } footer: {
+                Text("The entry file is what Stateglass runs. Recording values lets you click a result and see where it came from. Turn recording off only if you want output without recorded values.")
             }
 
-            Section("Python") {
+            Section {
                 TextField("Interpreter path (optional)", text: $model.pythonPath)
                     .textFieldStyle(.roundedBorder)
+                    .help("Leave empty to use python on your PATH, or a project .venv when one is present.")
+                    .accessibilityLabel("Python interpreter path")
                 HStack {
                     Button("Save Project Settings") {
                         Task {
@@ -54,6 +66,10 @@ struct SettingsView: View {
                         Task { await model.saveGlobalPythonPath() }
                     }
                 }
+            } header: {
+                Text("Python")
+            } footer: {
+                Text("Leave the path empty to use python on your PATH. A project .venv is detected automatically.")
             }
         }
         .formStyle(.grouped)

@@ -73,7 +73,7 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) {}
             Button("Allow and Run") { Task { await model.grantConsentAndRun() } }
         } message: {
-            Text("Stateglass runs code with your user privileges. It is not a security sandbox.")
+            Text(consentMessage)
         }
         .alert("Stateglass", isPresented: Binding(
             get: { model.notice != nil },
@@ -111,57 +111,101 @@ struct ContentView: View {
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: model.palette)
     }
+
+    private var consentMessage: String {
+        let file = model.entryPoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = file.isEmpty ? "this project" : file
+        return "Stateglass will run \(target) with your user privileges, the same way Terminal would. It is not a security sandbox."
+    }
 }
 
 private struct WelcomeView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 18) {
-            AppIcon("logo", size: 48)
-                .foregroundStyle(Palette.accent)
-            Text("Stateglass")
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
-            Text("Trace how values are produced. Experiment safely against a recorded baseline.")
-                .foregroundStyle(Palette.muted)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 450)
-            HStack(spacing: 12) {
-                Button("Open Project…") { model.openProjectPanel() }
-                    .buttonStyle(.borderedProminent)
-                Button("Load Sample Project") { Task { await model.loadSample() } }
-                    .buttonStyle(.bordered)
-            }
-            if !model.projects.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("Recent")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Palette.muted)
-                    ForEach(model.projects) { project in
-                        Button {
-                            Task { await model.openRecentProject(project) }
-                        } label: {
-                            HStack {
-                                AppIcon("folder", size: 14)
-                                VStack(alignment: .leading) {
-                                    Text(project.name)
-                                    Text(project.rootPath).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
-                                }
-                                Spacer()
-                                AppIcon("chevron-right", size: 10).foregroundStyle(Palette.muted)
-                            }
-                            .font(.system(size: 13))
-                            .padding(9)
-                            .background(Palette.panel, in: RoundedRectangle(cornerRadius: 6))
-                        }
-                        .buttonStyle(.plain)
-                    }
+        ScrollView {
+            VStack(spacing: 20) {
+                AppIcon("logo", size: 48)
+                    .foregroundStyle(Palette.accent)
+                    .accessibilityHidden(true)
+                Text("Stateglass")
+                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                Text("Run a Python project, see where a value came from, then try a change without editing the original folder.")
+                    .foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 520)
+                VStack(alignment: .leading, spacing: 10) {
+                    welcomeStep(1, "Open a project, or try the sample.")
+                    welcomeStep(2, "Run it. Stateglass records each value as the program runs.")
+                    welcomeStep(3, "Click a value to see the line that produced it.")
                 }
-                .frame(maxWidth: 450, alignment: .leading)
-                .padding(.top, 8)
+                .padding(14)
+                .frame(maxWidth: 520, alignment: .leading)
+                .background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("How to start")
+                HStack(spacing: 12) {
+                    Button("Try the sample") { Task { await model.loadSample() } }
+                        .buttonStyle(.borderedProminent)
+                        .help("Open a small project with one intentional bug")
+                    Button("Open Project…") { model.openProjectPanel() }
+                        .buttonStyle(.bordered)
+                        .help("Choose a folder on this Mac")
+                }
+                Text("Press ⌘⇧P anytime to search every command.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                if !model.projects.isEmpty {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Recent")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Palette.muted)
+                        ForEach(model.projects) { project in
+                            Button {
+                                Task { await model.openRecentProject(project) }
+                            } label: {
+                                HStack {
+                                    AppIcon("folder", size: 14)
+                                    VStack(alignment: .leading) {
+                                        Text(project.name)
+                                        Text(project.rootPath).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.muted)
+                                    }
+                                    Spacer()
+                                    AppIcon("chevron-right", size: 10).foregroundStyle(Palette.muted)
+                                }
+                                .font(.system(size: 13))
+                                .padding(9)
+                                .background(Palette.panel, in: RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open \(project.name)")
+                            .accessibilityHint(project.rootPath)
+                        }
+                    }
+                    .frame(maxWidth: 520, alignment: .leading)
+                    .padding(.top, 8)
+                }
             }
+            .padding(40)
+            .frame(maxWidth: .infinity)
         }
-        .padding(40)
+    }
+
+    private func welcomeStep(_ number: Int, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("\(number)")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 22, height: 22)
+                .background(Palette.raised, in: Circle())
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(number). \(text)")
     }
 }
 
@@ -225,52 +269,55 @@ private struct WorkspaceView: View {
             .help("Open a project folder (⌘O)")
             .accessibilityLabel("Open project")
         }
-        ToolbarItem(placement: .navigation) {
-            Button { Task { await model.loadSample() } } label: {
-                IconLabel("Sample", icon: "box")
+        if !model.showGuide {
+            ToolbarItem(placement: .navigation) {
+                Button { model.setGuideVisible(true) } label: {
+                    IconLabel("Guide", icon: "info")
+                }
+                .help("Show the getting started steps")
+                .accessibilityLabel("Show getting started")
             }
-            .help("Load the sample project")
-            .accessibilityLabel("Load sample project")
         }
         ToolbarItemGroup(placement: .primaryAction) {
             if !model.sessions.isEmpty {
-                Picker("Run", selection: sessionBinding) {
+                Picker("Recorded run", selection: sessionBinding) {
                     ForEach(model.sessions) { session in
-                        Text("\(session.kind == "experiment" ? "Experiment" : "Run") · \(session.status)")
-                            .tag(session.id)
+                        Text(session.pickerTitle).tag(session.id)
                     }
                 }
                 .labelsHidden()
-                .frame(width: 165)
-                .help("Select a recorded run")
-                .accessibilityLabel("Select a recorded run")
+                .frame(width: 210)
+                .help("Choose which run’s values to inspect")
+                .accessibilityLabel("Recorded run")
             }
-            SettingsLink {
-                IconLabel("Run Settings", icon: "sliders")
+            Button { model.showRunOptions.toggle() } label: {
+                IconLabel("Run options", icon: "sliders")
             }
-            .help("Run settings")
-            if let root = model.project?.rootPath {
-                ShareLink(item: URL(fileURLWithPath: root)) {
-                    IconLabel("Share", icon: "share")
-                }
-                .help("Share the project folder")
+            .help("Choose the file to run and whether values are recorded")
+            .accessibilityLabel("Run options")
+            .popover(isPresented: $model.showRunOptions, arrowEdge: .bottom) {
+                RunOptionsPopover()
+                    .environmentObject(model)
             }
             if model.isRunning {
                 Button { Task { await model.cancelRun() } } label: {
                     IconLabel("Cancel", icon: "stop")
                 }
                 .help("Cancel the running project (⌘.)")
+                .accessibilityLabel("Cancel run")
             } else {
                 Button { Task { await model.run() } } label: {
                     IconLabel("Run", icon: "play")
                 }
                 .buttonStyle(.borderedProminent)
-                .help("Run the project (⌘↵)")
+                .help("Run the project and record its values (⌘↵)")
+                .accessibilityLabel("Run project")
             }
             Button { model.showInspector.toggle() } label: {
-                IconLabel("Inspector", icon: "panel-right")
+                IconLabel("Values", icon: "panel-right")
             }
-            .help("Show or hide the inspector (⌘⌥I)")
+            .help(model.showInspector ? "Hide recorded values (⌘⌥I)" : "Show recorded values (⌘⌥I)")
+            .accessibilityLabel(model.showInspector ? "Hide recorded values" : "Show recorded values")
         }
     }
 
@@ -330,14 +377,16 @@ private struct ProjectSidebar: View {
                                 Circle()
                                     .fill(statusColor(session.status))
                                     .frame(width: 6, height: 6)
-                                Text(session.command.isEmpty ? session.kind : session.command)
+                                    .accessibilityHidden(true)
+                                Text(session.command.isEmpty ? session.kindTitle : session.command)
                                     .font(.system(size: 12, design: .monospaced))
                                     .lineLimit(1)
                                     .foregroundStyle(.secondary)
                             }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Run \(session.command), status \(session.status)")
+                        .help("\(session.pickerTitle). \(session.command)")
+                        .accessibilityLabel("\(session.kindTitle), \(session.statusTitle), \(session.command)")
                     }
                 }
             }
@@ -413,21 +462,33 @@ private struct CenterWorkspace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
                 Picker("Workspace", selection: $model.centerTab) {
                     ForEach(WorkspaceTab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
+                        Text(tab.title)
+                            .tag(tab)
+                            .accessibilityLabel(tab.title)
+                            .accessibilityHint(tab.help)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 460)
+                .frame(maxWidth: 560)
                 .accessibilityLabel("Workspace view")
-                Spacer(minLength: 0)
+                Text(model.centerTab.help)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(GlassTheme.chrome)
+
+            if model.showGuide {
+                GettingStartedBanner()
+            }
 
             Group {
                 switch model.centerTab {
@@ -442,6 +503,182 @@ private struct CenterWorkspace: View {
             .background(Palette.canvas)
         }
         .background(Palette.panel)
+    }
+}
+
+private struct GuideStep: Identifiable {
+    let id: Int
+    let title: String
+    let help: String
+    let isComplete: Bool
+    let isCurrent: Bool
+    let action: () -> Void
+}
+
+private struct GettingStartedBanner: View {
+    @EnvironmentObject private var model: AppModel
+
+    private var steps: [GuideStep] {
+        let ran = model.hasCompletedOriginalRun
+        let selected = model.selectedVariable != nil
+        let sawTrace = selected && (model.centerTab == .flow || !model.experiments.isEmpty || model.comparison != nil)
+        let compared = model.comparison != nil
+        let flags = [ran, selected, sawTrace, compared]
+        let current = flags.firstIndex(of: false)
+        return [
+            GuideStep(
+                id: 1,
+                title: "Run the project",
+                help: "Record values from the program. Shortcut ⌘↩.",
+                isComplete: ran,
+                isCurrent: current == 0
+            ) {
+                Task { await model.run() }
+            },
+            GuideStep(
+                id: 2,
+                title: "Select a value",
+                help: "Open Recorded values and click a name.",
+                isComplete: selected,
+                isCurrent: current == 1
+            ) {
+                model.showInspector = true
+                if model.selectedVariable == nil {
+                    model.flashStatus("Select a value in Recorded values.")
+                }
+            },
+            GuideStep(
+                id: 3,
+                title: "See where it came from",
+                help: "Opens Trace for the selected value.",
+                isComplete: sawTrace,
+                isCurrent: current == 2
+            ) {
+                model.showInspector = true
+                model.centerTab = .flow
+            },
+            GuideStep(
+                id: 4,
+                title: "Try a change",
+                help: model.experiments.isEmpty
+                    ? "Create a copy, edit it, and run it. Your original folder stays as it is."
+                    : "Run the copy, then compare it with the original run.",
+                isComplete: compared,
+                isCurrent: current == 3
+            ) {
+                if !model.hasCompletedOriginalRun {
+                    Task { await model.run() }
+                } else if model.experiments.isEmpty {
+                    model.showNewExperiment = true
+                } else {
+                    model.centerTab = .compare
+                }
+            },
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Getting started")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer(minLength: 8)
+                Button("Hide guide") { model.setGuideVisible(false) }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12))
+                    .help("Hide these steps. Show them again from the toolbar or ⌘⇧P.")
+                    .accessibilityLabel("Hide getting started")
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 8) {
+                    ForEach(steps) { step in
+                        stepButton(step)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(steps) { step in
+                        stepButton(step)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GlassTheme.raised)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Getting started")
+    }
+
+    private func stepButton(_ step: GuideStep) -> some View {
+        Button(action: step.action) {
+            HStack(spacing: 6) {
+                Text(step.isComplete ? "✓" : "\(step.id)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(step.isCurrent ? Palette.accent : Palette.muted)
+                    .frame(width: 18, height: 18)
+                    .background(step.isCurrent ? Palette.accent.opacity(0.18) : Palette.panel, in: Circle())
+                    .accessibilityHidden(true)
+                Text(step.title)
+                    .font(.system(size: 12, weight: step.isCurrent ? .semibold : .regular))
+                    .foregroundStyle(step.isCurrent ? Color.primary : Palette.muted)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .help(step.help)
+        .accessibilityLabel("Step \(step.id), \(step.title). \(step.isComplete ? "Completed." : step.isCurrent ? "Current step." : "Not done yet.")")
+        .accessibilityHint(step.help)
+    }
+}
+
+private struct RunOptionsPopover: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Run options")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Used the next time you run.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Entry file")
+                    .font(.system(size: 12, weight: .semibold))
+                TextField("The file Stateglass runs", text: $model.entryPoint)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Entry file")
+                Text("The file Stateglass runs.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Arguments")
+                    .font(.system(size: 12, weight: .semibold))
+                TextField("Optional arguments", text: $model.runArguments)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Arguments")
+            }
+            Toggle("Record values", isOn: $model.tracingEnabled)
+                .help("Turn this off only if you want output without recorded values.")
+            Text("Turn this off only if you want output without recorded values.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Divider()
+            Button("All settings…") {
+                model.showRunOptions = false
+                openSettings()
+            }
+            .accessibilityHint("Opens timeout, Python, and other settings")
+        }
+        .padding(16)
+        .frame(width: 320)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Run options")
     }
 }
 
@@ -581,21 +818,147 @@ private struct InspectorSidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Inspector").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                if let session = model.activeSession {
-                    Text(session.status.uppercased())
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(session.status == "ok" ? Palette.green : Palette.accent)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text("Recorded values")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    if let session = model.activeSession {
+                        Text(session.statusTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(session.status == "ok" ? Palette.green : session.status == "running" ? Palette.accent : Palette.red)
+                    }
                 }
+                Text("Values from the latest run. Select one to see where it came from.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .foregroundStyle(Palette.muted)
             .padding(11)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Variables").font(.system(size: 13, weight: .semibold))
+            if model.activeSession?.traceTruncated == true {
+                Text("The recording hit its limit, so some values may be missing.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 11)
+                    .padding(.bottom, 8)
+            }
+            if let error = model.activeSession?.error, !error.isEmpty, model.activeSession?.status != "running" {
+                Text(error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 11)
+                    .padding(.bottom, 8)
+                    .textSelection(.enabled)
+            }
+
+            if model.isRunning && model.variables.isEmpty && model.traceEvents.isEmpty {
+                Spacer()
+                VStack(spacing: 8) {
+                    ProgressView(model.tracingEnabled ? "Recording values…" : "Running…")
+                        .controlSize(.small)
+                    if !model.tracingEnabled {
+                        Text("Recording is off, so this run only shows program output.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Palette.muted)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(16)
+                Spacer()
+            } else if model.variables.isEmpty && model.traceEvents.isEmpty {
+                inspectorEmpty
+            } else {
+                recordedLists
+            }
+
+            if let selectedVariable = model.selectedVariable, !model.variableHistory.isEmpty {
+                Divider().overlay(Palette.border)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("How \(selectedVariable) changed")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                    ForEach(model.variableHistory.prefix(5)) { item in
+                        Button {
+                            Task { await model.selectTrace(item) }
+                        } label: {
+                            Text("#\(item.seq)  \(item.value ?? "")")
+                                .font(.system(size: 12, design: .monospaced))
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show this moment in the editor")
+                        .accessibilityLabel("How \(selectedVariable) changed at event \(item.seq), value \(item.value ?? "empty")")
+                        .accessibilityHint("Opens the line that produced this value")
+                    }
+                }
+                .padding(10)
+            }
+        }
+        .background(Palette.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Recorded values")
+    }
+
+    private var inspectorEmpty: some View {
+        let finishedWithoutValues = model.activeSession != nil && model.activeSession?.status != "running"
+        return VStack(spacing: 10) {
+            Spacer()
+            if finishedWithoutValues {
+                Text("No values were recorded")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(model.tracingEnabled
+                     ? "Run the project again after it changes a variable."
+                     : "Recording is off. Turn on Record values in Run options, then run again.")
+                    .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center)
+                if !model.tracingEnabled {
+                    Button("Open Run options") { model.showRunOptions = true }
+                        .buttonStyle(.bordered)
+                }
+            } else {
+                Text("Run the project to record values")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("After the run, the values appear here. Select one to see the line that produced it.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center)
+            }
+            Button("Run the project") { Task { await model.run() } }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isRunning)
+                .help("Run the project and record its values (⌘↵)")
+            Spacer()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var recordedLists: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Values")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.muted)
+            if model.variables.isEmpty {
+                Text(model.isRunning
+                     ? "Values appear here when the run finishes."
+                     : model.tracingEnabled
+                     ? "No values at this moment. Pick another event below."
+                     : "Recording is off. Turn on Record values in Run options, then run again.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 6)
+                if !model.tracingEnabled {
+                    Button("Open Run options") { model.showRunOptions = true }
+                        .buttonStyle(.bordered)
+                        .padding(.bottom, 6)
+                }
+            } else {
                 List(model.variables) { variable in
                     Button {
                         Task { await model.selectVariable(variable.name) }
@@ -604,7 +967,10 @@ private struct InspectorSidebar: View {
                             HStack {
                                 Text(variable.name).font(.system(size: 13, weight: .semibold, design: .monospaced))
                                 Spacer()
-                                Text(variable.vtype).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                                Text(variable.vtype)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Palette.muted)
+                                    .help("Type")
                             }
                             Text(variable.value).font(.system(size: 12, design: .monospaced))
                                 .foregroundStyle(Palette.muted)
@@ -615,63 +981,53 @@ private struct InspectorSidebar: View {
                     .buttonStyle(.plain)
                     .listRowBackground(model.selectedVariable == variable.name ? Palette.raised : .clear)
                     .accessibilityLabel("\(variable.name), type \(variable.vtype), value \(variable.value)")
+                    .accessibilityHint("Shows where this value came from")
                     .accessibilityAddTraits(model.selectedVariable == variable.name ? .isSelected : [])
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-
-                Divider().overlay(Palette.border)
-                HStack {
-                    Text("Timeline").font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Text("\(model.traceEvents.count) events")
-                }
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.muted)
-
-                TextField("Filter events", text: $eventFilter)
-                    .textFieldStyle(.roundedBorder)
-                List(filteredEvents) { event in
-                    Button {
-                        Task { await model.selectTrace(event) }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text("#\(event.seq)").foregroundStyle(Palette.muted)
-                            Text(event.kind).foregroundStyle(Palette.accent)
-                            Text(event.name ?? event.functionName ?? event.file.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "")
-                                .lineLimit(1)
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.system(size: 12, design: .monospaced))
-                        .padding(.vertical, 3)
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(model.selectedTraceId == event.id ? Palette.raised : .clear)
-                    .accessibilityLabel("Event \(event.seq), \(event.kind), \(event.name ?? event.functionName ?? "")")
-                    .accessibilityAddTraits(model.selectedTraceId == event.id ? .isSelected : [])
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
-            .padding(.horizontal, 9)
-            .frame(maxHeight: .infinity)
 
-            if let selectedVariable = model.selectedVariable {
-                Divider().overlay(Palette.border)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(selectedVariable) history")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Palette.muted)
-                    ForEach(model.variableHistory.prefix(5)) { item in
-                        Text("#\(item.seq)  \(item.value ?? "")")
-                            .font(.system(size: 12, design: .monospaced))
+            Divider().overlay(Palette.border)
+            HStack {
+                Text("What happened")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text("\(model.traceEvents.count)")
+                    .accessibilityLabel("\(model.traceEvents.count) events")
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(Palette.muted)
+
+            TextField("Filter events", text: $eventFilter)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Filter events")
+            List(filteredEvents) { event in
+                Button {
+                    Task { await model.selectTrace(event) }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("#\(event.seq)").foregroundStyle(Palette.muted)
+                        Text(TraceKindText.label(event.kind)).foregroundStyle(Palette.accent)
+                        Text(event.name ?? event.functionName ?? event.file.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "")
                             .lineLimit(1)
+                            .foregroundStyle(.secondary)
                     }
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(.vertical, 3)
                 }
-                .padding(10)
+                .buttonStyle(.plain)
+                .help(event.kind)
+                .listRowBackground(model.selectedTraceId == event.id ? Palette.raised : .clear)
+                .accessibilityLabel("Event \(event.seq), \(TraceKindText.label(event.kind)), \(event.kind), \(event.name ?? event.functionName ?? "")")
+                .accessibilityHint("Opens this moment in the editor")
+                .accessibilityAddTraits(model.selectedTraceId == event.id ? .isSelected : [])
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
-        .background(Palette.panel)
+        .padding(.horizontal, 9)
+        .frame(maxHeight: .infinity)
     }
 }
 
@@ -682,22 +1038,32 @@ private struct DataFlowPanel: View {
         if let flow = model.dataFlow {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Value lineage · \(flow.variable)")
+                    Text("How \(flow.variable) was produced")
                         .font(.title3.bold())
-                    Text(flow.note).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    Text(flow.note).font(.system(size: 12)).foregroundStyle(Palette.muted)
                     if flow.truncated {
-                        IconLabel("The trace was truncated; this graph may be incomplete.", icon: "alert", size: 12)
-                            .font(.system(size: 10))
+                        IconLabel("The recording was cut short, so this graph may be incomplete.", icon: "alert", size: 12)
+                            .font(.system(size: 12))
                             .foregroundStyle(.orange)
                     }
                     FlowGraphView(flow: flow)
                         .frame(minHeight: 280)
-                    Text("ASSIGNMENT SITES")
-                        .font(.system(size: 9, weight: .bold)).tracking(1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        legendSwatch(.cyan, "The value")
+                        legendSwatch(Palette.muted, "A source it was read from")
+                        legendSwatch(.cyan, "An update")
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Legend. Cyan marks the value and updates. Gray marks a source the value was read from.")
+                    Text("Lines that set this value")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Palette.muted)
                     ForEach(flow.assignmentSites) { assignment in
                         Text("\(assignment.file):\(assignment.line)  \(assignment.target) = \(assignment.sources.joined(separator: ", "))")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
                             .padding(8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Palette.panel, in: RoundedRectangle(cornerRadius: 5))
@@ -708,13 +1074,22 @@ private struct DataFlowPanel: View {
         } else {
             ContentUnavailableView {
                 Label {
-                    Text("Select a variable")
+                    Text("Select a value")
                 } icon: {
                     AppIcon("flow", size: 44)
                 }
             } description: {
-                Text("Choose a variable in the inspector to inspect its data flow.")
+                Text("Select a value under Recorded values. This page shows the lines that produced it.")
+            } actions: {
+                Button("Show recorded values") { model.showInspector = true }
             }
+        }
+    }
+
+    private func legendSwatch(_ color: Color, _ title: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(title)
         }
     }
 }
@@ -729,85 +1104,162 @@ private struct ComparePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Picker("Baseline", selection: $baselineId) {
-                    ForEach(baselines) { session in
-                        Text(session.command).lineLimit(1).tag(session.id)
+            if baselines.isEmpty || experiments.isEmpty {
+                compareNeedsRuns
+            } else {
+                HStack {
+                    Picker("Original run", selection: $baselineId) {
+                        ForEach(baselines) { session in
+                            Text(session.compareTitle).lineLimit(1).tag(session.id)
+                        }
                     }
-                }
-                Picker("Experiment", selection: $experimentId) {
-                    ForEach(experiments) { session in
-                        Text(session.label ?? session.command).lineLimit(1).tag(session.id)
+                    .accessibilityLabel("Original run")
+                    Picker("Changed run", selection: $experimentId) {
+                        ForEach(experiments) { session in
+                            Text(session.compareTitle).lineLimit(1).tag(session.id)
+                        }
                     }
+                    .accessibilityLabel("Changed run")
+                    Button("Compare") {
+                        guard let left = model.sessions.first(where: { $0.id == baselineId }),
+                              let right = model.sessions.first(where: { $0.id == experimentId }) else { return }
+                        Task { await model.compare(left, right) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(baselineId.isEmpty || experimentId.isEmpty)
+                    .help("Show what changed between the original run and the experiment")
                 }
-                Button("Compare") {
-                    guard let left = model.sessions.first(where: { $0.id == baselineId }),
-                          let right = model.sessions.first(where: { $0.id == experimentId }) else { return }
-                    Task { await model.compare(left, right) }
-                }
-                .buttonStyle(.borderedProminent)
+                .pickerStyle(.menu)
             }
-            .pickerStyle(.menu)
 
             if let comparison = model.comparison {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 18) {
-                            metric("Baseline", comparison.baselineMetrics)
-                            metric("Experiment", comparison.experimentMetrics)
-                            if let line = comparison.stdoutDivergence { Text("First output change · line \(line)").foregroundStyle(Palette.accent) }
+                        HStack(alignment: .top, spacing: 18) {
+                            metric("Original run", comparison.baselineMetrics)
+                            metric("Changed run", comparison.experimentMetrics)
+                            if let line = comparison.stdoutDivergence {
+                                Text("First output change · line \(line)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Palette.accent)
+                            }
                         }
                         if !comparison.warnings.isEmpty {
                             ForEach(comparison.warnings, id: \.self) { warning in
-                                IconLabel(warning, icon: "info", size: 11).font(.system(size: 10)).foregroundStyle(.orange)
+                                IconLabel(warning, icon: "info", size: 12)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.orange)
                             }
                         }
-                        Text("STDOUT DIFF").font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(Palette.muted)
-                        ForEach(comparison.stdout) { line in diffRow(line) }
-                        Text("STDERR DIFF").font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(Palette.muted)
-                        ForEach(comparison.stderr) { line in diffRow(line) }
-                        Text("VARIABLES").font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(Palette.muted)
+                        compareSection("Output changes", comparison.stdout)
+                        compareSection("Error changes", comparison.stderr)
+                        Text("Values that differ")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Palette.muted)
                         ForEach(comparison.variables) { item in
                             HStack {
-                                Text(item.name).font(.system(size: 10, design: .monospaced))
+                                Text(item.name).font(.system(size: 12, design: .monospaced))
                                 Text(item.baselineValue ?? "—").foregroundStyle(Palette.muted)
                                 AppIcon("arrow-right", size: 11).foregroundStyle(Palette.muted)
+                                    .accessibilityHidden(true)
                                 Text(item.experimentValue ?? "—")
                                 Spacer()
-                                Text(item.status.uppercased()).font(.system(size: 8, weight: .bold)).foregroundStyle(item.status == "same" ? Palette.green : Palette.accent)
+                                Text(valueChangeLabel(item.status))
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(item.status == "same" ? Palette.green : Palette.accent)
                             }
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(item.name), \(valueChangeLabel(item.status)), from \(item.baselineValue ?? "empty") to \(item.experimentValue ?? "empty")")
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
                 }
-            } else {
+            } else if !baselines.isEmpty && !experiments.isEmpty {
                 ContentUnavailableView {
                     Label {
-                        Text("Compare executions")
+                        Text("Compare two runs")
                     } icon: {
                         AppIcon("compare", size: 44)
                     }
                 } description: {
-                    Text("Choose a baseline and an experiment execution to view output and variable changes.")
+                    Text("Choose an original run and a changed run, then press Compare.")
                 }
                 Spacer()
             }
         }
         .padding(12)
-        .onAppear {
+        .onAppear(perform: selectDefaultRuns)
+        .onChange(of: model.sessions.count) { _, _ in selectDefaultRuns() }
+    }
+
+    private var compareNeedsRuns: some View {
+        let missingOriginal = baselines.isEmpty
+        let missingExperiment = experiments.isEmpty
+        let reason: String = if missingOriginal && missingExperiment {
+            "Run the project once, then create an experiment and run that copy. Compare needs both."
+        } else if missingOriginal {
+            "Run the project once. That recording is the original run."
+        } else {
+            "Create an experiment, change the copy, and run it. Then come back to compare."
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(reason)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Go to Experiments") { model.centerTab = .experiments }
+                .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func selectDefaultRuns() {
+        if !baselines.contains(where: { $0.id == baselineId }) {
             baselineId = baselines.first?.id ?? ""
+        }
+        if !experiments.contains(where: { $0.id == experimentId }) {
             experimentId = experiments.first?.id ?? ""
+        }
+    }
+
+    private func compareSection(_ title: String, _ lines: [DiffLine]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.muted)
+            if lines.isEmpty {
+                Text("No changes.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+            } else {
+                ForEach(lines) { line in diffRow(line) }
+            }
+        }
+    }
+
+    private func valueChangeLabel(_ status: String) -> String {
+        switch status {
+        case "same": "Same"
+        case "changed": "Changed"
+        case "added": "Added"
+        case "removed": "Removed"
+        default: status.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 
     private func metric(_ title: String, _ metrics: RunMetrics) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased()).font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.muted)
-            Text("\(metrics.status) · \(metrics.durationMs ?? 0) ms · exit \(metrics.exitCode.map(String.init) ?? "—")")
-                .font(.system(size: 10, design: .monospaced))
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.muted)
+            Text("\(RunStatusText.label(metrics.status)) · \(metrics.durationMs ?? 0) ms · exit \(metrics.exitCode.map(String.init) ?? "—")")
+                .font(.system(size: 12, design: .monospaced))
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func diffRow(_ line: DiffLine) -> some View {
@@ -825,35 +1277,70 @@ private struct ExperimentsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Experiments").font(.title3.bold())
-                    Text("Each experiment is an isolated copy of the project.")
-                        .font(.system(size: 10)).foregroundStyle(Palette.muted)
+                    Text("Each experiment is a copy of the project. The original folder is not changed.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                Button("New experiment…") { model.showNewExperiment = true }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.hasCompletedOriginalRun)
+                    .help(model.hasCompletedOriginalRun
+                          ? "Create a copy based on the latest finished original run."
+                          : "Run the project once before creating an experiment.")
+            }
+            if model.experiments.isEmpty {
+                ContentUnavailableView {
+                    Label {
+                        Text("No experiments yet")
+                    } icon: {
+                        AppIcon("experiment", size: 44)
+                    }
+                } description: {
+                    Text(model.hasCompletedOriginalRun
+                         ? "Create a copy, edit it, and run it. Then use Compare to see what changed."
+                         : "Run the project once. Then you can try a change in a copy without editing the original folder.")
+                } actions: {
+                    if model.hasCompletedOriginalRun {
+                        Button("New experiment") { model.showNewExperiment = true }
+                    } else {
+                        Button("Run the project") { Task { await model.run() } }
+                    }
                 }
                 Spacer()
-                Button("New Experiment…") { model.showNewExperiment = true }
-                    .buttonStyle(.borderedProminent)
-            }
-            List(model.experiments) { experiment in
-                HStack(spacing: 10) {
-                    AppIcon("experiment", size: 16).foregroundStyle(Palette.accent)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(experiment.name).font(.system(size: 12, weight: .semibold))
-                        Text(experiment.note ?? experiment.path)
-                            .font(.system(size: 9)).foregroundStyle(Palette.muted).lineLimit(1)
+            } else {
+                List(model.experiments) { experiment in
+                    HStack(spacing: 10) {
+                        AppIcon("experiment", size: 16)
+                            .foregroundStyle(Palette.accent)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(experiment.name).font(.system(size: 13, weight: .semibold))
+                            Text(experiment.note ?? experiment.path)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.muted)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Button("Edit this copy") { Task { await model.selectExperiment(experiment.id) } }
+                            .buttonStyle(.bordered)
+                            .help("Switches the editor to this copy. Your original folder is not changed.")
+                            .accessibilityHint("Switches the editor to this copy. Your original folder is not changed.")
+                        Button("Run") { Task { await model.runExperiment(experiment) } }
+                            .buttonStyle(.borderedProminent)
+                            .help("Run this copy and record its values")
                     }
-                    Spacer()
-                    Button("Open Copy") { Task { await model.selectExperiment(experiment.id) } }
-                        .buttonStyle(.bordered)
-                    Button("Run") { Task { await model.runExperiment(experiment) } }
-                        .buttonStyle(.borderedProminent)
+                    .padding(.vertical, 4)
+                    .listRowBackground(Palette.panel)
+                    .accessibilityElement(children: .contain)
                 }
-                .padding(.vertical, 4)
-                .listRowBackground(Palette.panel)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
         .padding(12)
     }
@@ -865,11 +1352,15 @@ private struct NewExperimentSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("New Experiment").font(.title2.bold())
-            Text("Create an isolated copy based on the most recent completed baseline run.")
-                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+            Text("New experiment").font(.title2.bold())
+            Text("Create a copy of the project from the latest finished original run. The original folder is not changed.")
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
             TextField("Experiment name", text: $model.experimentName)
+                .accessibilityLabel("Experiment name")
             TextField("Note (optional)", text: $model.experimentNote)
+                .accessibilityLabel("Note, optional")
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -892,13 +1383,19 @@ private struct ConsolePanel: View {
                 Text("Console")
                     .font(.system(size: 13, weight: .semibold))
                 Picker("Stream", selection: $showingStderr) {
-                    Text("stdout").tag(false)
-                    Text("stderr").tag(true)
+                    Text("Output").tag(false)
+                        .accessibilityLabel("Output")
+                        .accessibilityHint("Program output, also called stdout")
+                    Text("Errors").tag(true)
+                        .accessibilityLabel("Errors")
+                        .accessibilityHint("Program errors, also called stderr")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .controlSize(.small)
-                .frame(width: 148)
+                .frame(width: 180)
+                .help(showingStderr ? "Errors (stderr)" : "Program output (stdout)")
+                .accessibilityLabel("Console stream")
                 Spacer()
                 if let runStats = model.runStats {
                     Text(runStats).foregroundStyle(Palette.muted)
@@ -909,12 +1406,21 @@ private struct ConsolePanel: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             ScrollView {
-                Text(showingStderr ? model.stderr : model.output)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(showingStderr ? Palette.red.opacity(0.9) : Color.primary.opacity(0.82))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
+                let text = showingStderr ? model.stderr : model.output
+                if text.isEmpty {
+                    Text(showingStderr ? "Errors from the program appear here." : "Program output appears here after you run.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Palette.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                } else {
+                    Text(text)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(showingStderr ? Palette.red.opacity(0.9) : Color.primary.opacity(0.82))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
             }
         }
         .background(Palette.panel)
@@ -928,15 +1434,19 @@ private struct StatusBar: View {
         HStack(spacing: 0) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(model.isRunning ? Palette.accent : model.activeSession?.status == "ok" ? Palette.green : Palette.muted)
+                    .fill(statusColor)
                     .frame(width: 6, height: 6)
-                Text(model.isRunning ? "Running" : model.activeSession?.status.capitalized ?? "Ready")
+                    .accessibilityHidden(true)
+                Text(statusLabel)
                 if let activeSession = model.activeSession {
                     Text(activeSession.command)
                         .lineLimit(1)
                         .foregroundStyle(.secondary)
+                        .help(activeSession.command)
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(statusAccessibility)
             Spacer(minLength: 8)
             if model.isBusy { ProgressView().controlSize(.mini) }
             if let note = model.statusNote {
@@ -954,6 +1464,27 @@ private struct StatusBar: View {
         .frame(height: 28)
         .background(GlassTheme.chrome)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private var statusLabel: String {
+        if model.isRunning { return "Running" }
+        return model.activeSession?.statusTitle ?? "Ready"
+    }
+
+    private var statusColor: Color {
+        if model.isRunning { return Palette.accent }
+        switch model.activeSession?.status {
+        case "ok": return Palette.green
+        case nil: return Palette.muted
+        default: return Palette.red
+        }
+    }
+
+    private var statusAccessibility: String {
+        if let session = model.activeSession {
+            return "\(statusLabel). \(session.kindTitle). \(session.command)"
+        }
+        return statusLabel
     }
 
     private func statusItem(_ title: String) -> some View {
