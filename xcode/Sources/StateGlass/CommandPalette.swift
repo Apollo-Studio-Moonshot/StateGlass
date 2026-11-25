@@ -132,7 +132,9 @@ struct CommandPalette: View {
         let available = commands
         if trimmed.isEmpty { return available }
         return available.compactMap { row -> (PaletteRow, Int)? in
-            guard let score = Fuzzy.score(trimmed, row.title) else { return nil }
+            let titleScore = Fuzzy.score(trimmed, row.title)
+            let keywordScore = row.keywords.isEmpty ? nil : Fuzzy.score(trimmed, row.keywords)
+            guard let score = [titleScore, keywordScore].compactMap({ $0 }).max() else { return nil }
             return (row, score)
         }
         .sorted { $0.1 > $1.1 }
@@ -148,6 +150,11 @@ struct CommandPalette: View {
         }
         rows.append(command("open", "Open Project…", "⌘O") { model.openProjectPanel() })
         rows.append(command("sample", "Load Sample Project", "") { Task { await model.loadSample() } })
+        if model.project != nil {
+            rows.append(command("share", "Share Project Folder…", "", keywords: "share export") {
+                model.shareProjectFolder()
+            })
+        }
         if model.selectedFile != nil {
             rows.append(command("save", "Save File", "⌘S") { Task { await model.saveFile() } })
             rows.append(command("close", "Close Editor", "⌘W") {
@@ -161,17 +168,37 @@ struct CommandPalette: View {
             rows.append(command("cancel", "Cancel Run", "⌘.") { Task { await model.cancelRun() } })
         }
         if model.project != nil {
-            rows.append(command("experiment", "New Experiment…", "⌘⇧E") { model.showNewExperiment = true })
-            rows.append(command("canvas", "Show Canvas", "⌘0") { model.centerTab = .canvas })
-            rows.append(command("editor", "Show Editor", "⌘1") { model.centerTab = .editor })
-            rows.append(command("flow", "Show Data Flow", "⌘2") { model.centerTab = .flow })
-            rows.append(command("compare", "Show Compare", "⌘3") { model.centerTab = .compare })
-            rows.append(command("experiments", "Show Experiments", "⌘4") { model.centerTab = .experiments })
-            rows.append(command("inspector", model.showInspector ? "Hide Inspector" : "Show Inspector", "⌘⌥I") {
+            rows.append(command("experiment", "New Experiment…", "⌘⇧E", keywords: "baseline copy") {
+                model.showNewExperiment = true
+            })
+            rows.append(command("guide", "Show Getting Started", "", keywords: "guide help tour onboarding") {
+                model.setGuideVisible(true)
+            })
+            rows.append(command("canvas", "Show Notes (Canvas)", "⌘0", keywords: "canvas product notes") {
+                model.centerTab = .canvas
+            })
+            rows.append(command("editor", "Show Code (Editor)", "⌘1", keywords: "editor code") {
+                model.centerTab = .editor
+            })
+            rows.append(command("flow", "Show Trace (Data Flow)", "⌘2", keywords: "data flow trace value lineage") {
+                model.centerTab = .flow
+            })
+            rows.append(command("compare", "Show Compare", "⌘3", keywords: "baseline diff original run") {
+                model.centerTab = .compare
+            })
+            rows.append(command("experiments", "Show Experiments", "⌘4", keywords: "experiment baseline") {
+                model.centerTab = .experiments
+            })
+            rows.append(command(
+                "inspector",
+                model.showInspector ? "Hide Recorded Values (Inspector)" : "Show Recorded Values (Inspector)",
+                "⌘⌥I",
+                keywords: "inspector variables values"
+            ) {
                 model.showInspector.toggle()
             })
         }
-        rows.append(command("settings", "Settings…", "⌘,") { openSettings() })
+        rows.append(command("settings", "Settings…", "⌘,", keywords: "run options tracing") { openSettings() })
         for project in model.projects where project.id != model.project?.id {
             rows.append(command("recent-\(project.id)", "Open \(project.name)", "") {
                 Task { await model.openRecentProject(project) }
@@ -191,8 +218,14 @@ struct CommandPalette: View {
         }
     }
 
-    private func command(_ id: String, _ title: String, _ shortcut: String, action: @escaping () -> Void) -> PaletteRow {
-        PaletteRow(id: id, title: title, shortcut: shortcut) {
+    private func command(
+        _ id: String,
+        _ title: String,
+        _ shortcut: String,
+        keywords: String = "",
+        action: @escaping () -> Void
+    ) -> PaletteRow {
+        PaletteRow(id: id, title: title, keywords: keywords, shortcut: shortcut) {
             model.palette = nil
             action()
         }
@@ -259,6 +292,7 @@ private struct PaletteRow: Identifiable {
     let id: String
     let title: String
     var detail: String = ""
+    var keywords: String = ""
     let shortcut: String
     let action: () -> Void
 }

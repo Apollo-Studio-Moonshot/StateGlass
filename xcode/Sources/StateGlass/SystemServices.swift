@@ -279,11 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func shareProject() {
-        guard let path = AppModel.shared.project?.rootPath else { return }
-        let picker = NSSharingServicePicker(items: [URL(fileURLWithPath: path)])
-        if let window = NSApp.keyWindow, let view = window.contentView {
-            picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
-        }
+        AppModel.shared.shareProjectFolder()
     }
 }
 

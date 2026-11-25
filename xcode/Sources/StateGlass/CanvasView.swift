@@ -17,12 +17,12 @@ struct CanvasView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("WEAR ALL HATS")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.3)
-                        .foregroundStyle(CanvasPalette.muted)
-                    Text("One workspace for the whole product")
+                    Text("Product notes")
                         .font(.system(size: 15, weight: .semibold))
+                    Text("Optional notes about the product. This page is separate from the code trace.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CanvasPalette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Menu {
@@ -41,20 +41,47 @@ struct CanvasView: View {
                     IconLabel("Add context", icon: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+                .help("Add a note for one part of the product")
+                .accessibilityLabel("Add context")
             }
             .padding(14)
 
             Divider().overlay(CanvasPalette.border)
 
-            if model.canvasNodes.isEmpty {
+            if model.canvasLoading && model.canvasNodes.isEmpty {
+                VStack(spacing: 10) {
+                    ProgressView("Loading product notes…")
+                    Text("These notes are stored on this Mac.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CanvasPalette.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = model.canvasLoadError, model.canvasNodes.isEmpty {
                 ContentUnavailableView {
                     Label {
-                        Text("Loading your canvas")
+                        Text("Product notes could not load")
+                    } icon: {
+                        AppIcon("alert", size: 44)
+                    }
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try again") { Task { await model.loadCanvas() } }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.canvasNodes.isEmpty {
+                ContentUnavailableView {
+                    Label {
+                        Text("No product notes yet")
                     } icon: {
                         AppIcon("grid", size: 44)
                     }
                 } description: {
-                    Text("Your product context is stored locally.")
+                    Text("Add a note for part of the product, such as the interface or the database. This is separate from the code trace.")
+                } actions: {
+                    Text("Use Add context above to create the first note.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(CanvasPalette.muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -171,13 +198,15 @@ private struct DependencyMap: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("DEPENDENCY MAP")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(1.1)
+            Text("Connections")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(CanvasPalette.muted)
+            Text("What else may need a look if one note changes.")
+                .font(.system(size: 11))
                 .foregroundStyle(CanvasPalette.muted)
             if dependencies.isEmpty {
-                Text("Connect context nodes to see what may be affected by a change.")
-                    .font(.system(size: 10))
+                Text("Connect notes to see what may be affected by a change.")
+                    .font(.system(size: 12))
                     .foregroundStyle(CanvasPalette.muted)
             } else {
                 ForEach(dependencies) { dependency in
@@ -190,12 +219,12 @@ private struct DependencyMap: View {
                         Text(target?.title ?? "Unknown")
                         Spacer()
                         if target?.status == .needsReview {
-                            Text("REVIEW")
-                                .font(.system(size: 8, weight: .bold))
+                            Text("Review")
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(CanvasPalette.warning)
                         }
                     }
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .padding(9)
                     .background(CanvasPalette.raised, in: RoundedRectangle(cornerRadius: 6))
                 }
@@ -224,9 +253,8 @@ private struct ContextNodeInspector: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 AppIcon(node.kind.symbol, size: 16).foregroundStyle(CanvasPalette.accent)
-                Text("CONTEXT")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1)
+                Text("Note")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(CanvasPalette.muted)
                 Spacer()
                 Text(node.status.title)
@@ -256,9 +284,11 @@ private struct ContextNodeInspector: View {
             }
 
             Divider().overlay(CanvasPalette.border)
-            Text("AFFECTS")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(1)
+            Text("Affects")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(CanvasPalette.muted)
+            Text("What else should be reviewed if this changes.")
+                .font(.system(size: 11))
                 .foregroundStyle(CanvasPalette.muted)
             Menu("Add dependency") {
                 ForEach(nodes.filter { candidate in

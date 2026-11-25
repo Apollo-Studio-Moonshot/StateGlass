@@ -2,13 +2,80 @@ import Combine
 import Foundation
 import AppKit
 
+/// Center-workspace pages. Raw values are the persisted selection and stay stable
+/// even though the on-screen titles are plain language.
 enum WorkspaceTab: String, CaseIterable, Identifiable {
-    case canvas = "Canvas"
     case editor = "Editor"
     case flow = "Data Flow"
-    case compare = "Compare"
     case experiments = "Experiments"
+    case compare = "Compare"
+    case canvas = "Canvas"
+
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .editor: "Code"
+        case .flow: "Trace"
+        case .experiments: "Experiments"
+        case .compare: "Compare"
+        case .canvas: "Notes"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .editor: "Read and edit the project files."
+        case .flow: "See where a selected value came from."
+        case .experiments: "Try a change in a copy of the project."
+        case .compare: "Compare an original run with an experiment."
+        case .canvas: "Optional notes about the product, separate from the code trace."
+        }
+    }
+}
+
+enum RunStatusText {
+    static func label(_ status: String) -> String {
+        switch status {
+        case "ok": "Finished"
+        case "error", "failed": "Failed"
+        case "timeout": "Timed out"
+        case "cancelled", "canceled": "Cancelled"
+        case "running": "Running"
+        case "crashed": "Crashed"
+        default:
+            status.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+enum TraceKindText {
+    static func label(_ kind: String) -> String {
+        switch kind {
+        case "var": "assigned"
+        case "call": "called"
+        case "return": "returned"
+        case "exception": "error"
+        case "line": "ran"
+        case "del": "removed"
+        case "truncated": "stopped"
+        case "session_start": "started"
+        case "session_end": "finished"
+        default:
+            kind.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+}
+
+extension Session {
+    var kindTitle: String { kind == "experiment" ? "Experiment" : "Original run" }
+    var statusTitle: String { RunStatusText.label(status) }
+    var pickerTitle: String { "\(kindTitle) · \(statusTitle)" }
+
+    var compareTitle: String {
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? command : trimmed
+    }
 }
 
 private struct RunOutputMessage: Decodable {
@@ -59,6 +126,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var canvasDependencies: [NodeDependency] = []
     @Published var selectedNodeIDs: Set<String> = []
     @Published var focusedNodeID: String?
+    @Published private(set) var canvasLoading = false
+    @Published private(set) var canvasLoadError: String?
     @Published var canvasMode: CanvasMode = .build
     @Published var bottleneck = 0.5
     @Published var runArguments = ""
@@ -74,6 +143,8 @@ final class AppModel: ObservableObject {
     @Published var settingsError: String?
     @Published var runStats: String?
     @Published var showInspector = UserDefaults.standard.object(forKey: "workspace.inspectorVisible") as? Bool ?? true
+    @Published var showGuide = UserDefaults.standard.object(forKey: "guide.visible") as? Bool ?? true
+    @Published var showRunOptions = false
     @Published var palette: PaletteKind?
     @Published var closePrompt: String?
     @Published private(set) var editorLine = 1
@@ -82,6 +153,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var revealToken = 0
     @Published var statusNote: String?
 
+    private var announcedRunId: String?
     private let client = SidecarClient()
     private let canvasClient = CanvasBackendClient()
     private var canvasLoaded = false
@@ -116,6 +188,15 @@ final class AppModel: ObservableObject {
         activeSession?.status == "running"
     }
 
+    var hasCompletedOriginalRun: Bool {
+        sessions.contains { $0.kind == "baseline" && $0.status != "running" }
+    }
+
+    func setGuideVisible(_ visible: Bool) {
+        showGuide = visible
+        UserDefaults.standard.set(visible, forKey: "guide.visible")
+    }
+
     var displayRoot: String {
         project?.rootPath ?? ""
     }
@@ -130,16 +211,23 @@ final class AppModel: ObservableObject {
     }
 
     func loadCanvas() async {
+        canvasLoading = true
+        canvasLoadError = nil
+        defer { canvasLoading = false }
         do {
             let snapshot: CanvasSnapshot = try await canvasClient.request("list_canvas")
             canvasNodes = snapshot.nodes
             canvasDependencies = snapshot.dependencies
             canvasLoaded = true
+            canvasLoadError = nil
             if focusedNodeID == nil {
                 focusedNodeID = snapshot.nodes.first?.id
             }
         } catch {
-            notice = error.localizedDescription
+            canvasLoadError = error.localizedDescription
+            if !canvasNodes.isEmpty {
+                notice = error.localizedDescription
+            }
         }
     }
 
@@ -241,6 +329,12 @@ final class AppModel: ObservableObject {
         setProject(opened)
         UserDefaults.standard.set(opened.rootPath, forKey: "recentProjectPath")
         try await refreshWorkspace()
+    }
+
+    func shareProjectFolder() {
+        guard let path = project?.rootPath, let view = NSApp.keyWindow?.contentView else { return }
+        let picker = NSSharingServicePicker(items: [URL(fileURLWithPath: path)])
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
     }
 
     func openProjectPanel() {
@@ -377,10 +471,11 @@ final class AppModel: ObservableObject {
         if editorColumn != column { editorColumn = column }
     }
 
-    func flashStatus(_ message: String) {
+    func flashStatus(_ message: String, seconds: Double = 2.2) {
         statusNote = message
+        let delay = UInt64(max(0.4, seconds) * 1_000_000_000)
         Task {
-            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            try? await Task.sleep(nanoseconds: delay)
             if statusNote == message { statusNote = nil }
         }
     }
@@ -431,12 +526,11 @@ final class AppModel: ObservableObject {
             let session: Session = try await self.request("start_run", params: [
                 "request": try self.jsonObject(request),
             ])
-            self.activeSession = session
-            self.output = ""
-            self.stderr = ""
-            self.runStats = nil
+            self.beginRecording(session)
             self.centerTab = .editor
             try await self.refreshSessions()
+            try await self.publishRecording(sessionId: session.id)
+            self.announceFinishedRun(session.id)
         }
     }
 
@@ -459,14 +553,31 @@ final class AppModel: ObservableObject {
             let session: Session = try await self.request("start_run", params: [
                 "request": try self.jsonObject(request),
             ])
-            self.activeSession = session
-            self.output = ""
-            self.stderr = ""
             self.selectedExperimentId = experiment.id
             self.clearEditorBuffers()
+            self.beginRecording(session)
             self.centerTab = .editor
             try await self.refreshWorkspace()
+            if let updated = self.sessions.first(where: { $0.id == session.id }) {
+                self.activeSession = updated
+            }
+            try await self.publishRecording(sessionId: session.id)
+            self.announceFinishedRun(session.id)
         }
+    }
+
+    /// Drops the previous recording so the inspector shows this run only.
+    private func beginRecording(_ session: Session) {
+        activeSession = session
+        output = ""
+        stderr = ""
+        runStats = nil
+        traceEvents = []
+        variables = []
+        variableHistory = []
+        dataFlow = nil
+        selectedVariable = nil
+        selectedTraceId = nil
     }
 
     func cancelRun() async {
@@ -576,7 +687,7 @@ final class AppModel: ObservableObject {
             self.experimentName = ""
             self.experimentNote = ""
             self.showNewExperiment = false
-            self.notice = "Created experiment \(created.name)"
+            self.flashStatus("Created experiment \(created.name)")
             try await self.refreshWorkspace()
             self.centerTab = .experiments
         }
@@ -659,6 +770,45 @@ final class AppModel: ObservableObject {
         ])
     }
 
+    /// Fills the inspector after a run so the first recording is visible without
+    /// selecting the session again. A fast run can finish before `start_run`
+    /// returns, so both the finish event and the start response publish.
+    private func publishRecording(sessionId: String) async throws {
+        guard activeSession?.id == sessionId else { return }
+        guard let session = sessions.first(where: { $0.id == sessionId }) ?? activeSession else { return }
+        activeSession = session
+        guard session.status != "running" else { return }
+        let page: TracePage = try await request("list_trace_events", params: [
+            "sessionId": session.id,
+            "limit": 4000,
+        ])
+        traceEvents = page.events
+        try await loadVariables(at: nil)
+    }
+
+    private func presentFinishedRun(sessionId: String?) async {
+        guard let sessionId, activeSession?.id == sessionId else { return }
+        await runAction {
+            try await self.refreshSessions()
+            try await self.publishRecording(sessionId: sessionId)
+        }
+        announceFinishedRun(sessionId)
+    }
+
+    private func announceFinishedRun(_ sessionId: String) {
+        guard announcedRunId != sessionId else { return }
+        guard activeSession?.id == sessionId, let session = activeSession, session.status != "running" else { return }
+        announcedRunId = sessionId
+        if !showInspector { showInspector = true }
+        if session.status == "ok" {
+            flashStatus("Run finished. Select a value on the right.", seconds: 6)
+        } else if let error = session.error, !error.isEmpty {
+            flashStatus(error, seconds: 6)
+        } else {
+            flashStatus("Run \(session.statusTitle.lowercased()).", seconds: 6)
+        }
+    }
+
     private func receive(_ event: SidecarEvent) {
         switch event.name {
         case "run:output":
@@ -670,6 +820,7 @@ final class AppModel: ObservableObject {
             }
         case "run:trace":
             guard let message = try? JSONDecoder().decode(RunTraceMessage.self, from: event.payload) else { return }
+            guard message.sessionId == activeSession?.id, activeSession?.status == "running" else { return }
             traceEvents.append(contentsOf: message.events)
         case "run:stats":
             if let values = try? JSONSerialization.jsonObject(with: event.payload) as? [String: Any],
@@ -677,8 +828,11 @@ final class AppModel: ObservableObject {
                 runStats = String(format: "%.2fs", Double(elapsed) / 1000)
             }
         case "run:finished":
-            if let finished = try? JSONDecoder().decode(Session.self, from: event.payload) {
-                activeSession = finished
+            let finished = try? JSONDecoder().decode(Session.self, from: event.payload)
+            if let finished {
+                if activeSession?.id == finished.id || activeSession == nil {
+                    activeSession = finished
+                }
                 if finished.status != "running" {
                     NotificationService.runFinished(
                         projectName: project?.name ?? "Project",
@@ -687,7 +841,8 @@ final class AppModel: ObservableObject {
                     )
                 }
             }
-            Task { await runAction { try await self.refreshSessions() } }
+            let sessionId = finished?.id ?? activeSession?.id
+            Task { await self.presentFinishedRun(sessionId: sessionId) }
         case "workspace:changed":
             guard let changed = try? JSONDecoder().decode(WorkspaceChangedMessage.self, from: event.payload),
                   changed.workspaceId == project?.id || changed.workspaceId == selectedExperimentId else { return }
